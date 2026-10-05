@@ -1,1 +1,118 @@
-# voice-traductor
+# Traducción en Vivo para Iglesias — MVP
+
+## Idea
+
+Crear un sistema de **traducción de voz en tiempo real para iglesias**, pensado para eliminar la dependencia de una persona que tenga que traducir manualmente cada servicio.
+
+El objetivo es que mientras un pastor o predicador habla, por ejemplo en español, una persona que necesite escucharlo en inglés pueda entrar desde su celular y **escuchar la traducción en vivo con el menor retraso posible**.
+
+Inicialmente:
+
+**Español → Inglés**  
+**Inglés → Español**
+
+El proyecto debe diseñarse pensando en que posteriormente pueda ofrecerse como un servicio para múltiples iglesias.
+
+---
+
+## Problema actual
+
+Cuando una iglesia recibe personas que hablan otro idioma, normalmente necesita:
+
+- Una persona traduciendo en vivo.
+- Equipos o receptores especiales.
+- Una persona disponible durante todo el servicio.
+- Una traducción independiente cada vez que se necesita el servicio.
+
+Esto genera dependencia humana y dificulta escalar la traducción a más personas o más iglesias.
+
+---
+
+## Concepto principal
+
+Cada iglesia tendría su propio espacio dentro del sistema.
+
+Cuando comienza un servicio:
+
+**Predicador habla → sistema recibe el audio → IA traduce → genera audio traducido → múltiples personas escuchan esa misma traducción desde el dispositivo que conectaron.**
+
+Un requisito importante es que **no debe generarse una traducción independiente por cada oyente**.
+
+Por ejemplo:
+
+Si 100 personas están escuchando la traducción del mismo servicio, debería existir **una sola sesión/proceso de traducción para ese idioma**, y esa salida debería poder distribuirse a todos los oyentes conectados.
+
+---
+
+## Identificación de la iglesia
+
+Cuando una persona llegue a una iglesia, el sistema debe permitir identificar fácilmente qué traducción debe escuchar.
+
+Algunas posibilidades podrían ser:
+
+- Código de la iglesia o del servicio.
+- QR mostrado por la iglesia.
+- Ubicación/proximidad.
+- Otra alternativa más conveniente.
+
+**No se define todavía cuál debe utilizarse.**
+
+Cloud Code deberá analizar cuál alternativa tiene más sentido para el MVP y cuál permite escalar posteriormente.
+
+---
+
+## MVP
+
+La primera versión no pretende construir todavía todo el producto comercial.
+
+La prioridad es comprobar si la experiencia de traducción funciona realmente bien.
+
+El MVP debe permitir hacer una prueba real como esta:
+
+> El pastor está predicando en español en la iglesia.  
+> El sistema recibe su voz.  
+> Desde otro celular puedo entrar y escuchar esa predicación traducida al inglés prácticamente en vivo.
+
+Queremos evaluar principalmente:
+
+- Calidad de la traducción.
+- Naturalidad de la voz.
+- Retraso entre la voz original y la traducción.
+- Estabilidad durante una predicación prolongada.
+- Experiencia de escucha desde un celular.
+- Qué ocurre cuando varias personas escuchan simultáneamente.
+- Viabilidad de usar una sola traducción y distribuirla a muchos oyentes.
+
+---
+
+## Visión posterior
+
+Si el MVP demuestra que la traducción es suficientemente buena, el sistema debería poder evolucionar hacia una plataforma donde diferentes iglesias puedan registrarse y ofrecer traducción durante sus servicios.
+
+Cada iglesia tendría sus propios datos y sus propias transmisiones, sin que los asistentes de una iglesia terminen escuchando accidentalmente la traducción de otra.
+
+La arquitectura futura debería contemplar la posibilidad de manejar:
+
+- Varias iglesias.
+- Varios servicios simultáneos.
+- Diferentes cantidades de oyentes.
+- Más idiomas en el futuro.
+
+---
+
+## Lo que debe analizar Cloud Code
+
+Este README **no define la arquitectura ni la tecnología que debe utilizarse**.
+
+Cloud Code debe investigar y proponer la mejor forma de conseguir esta experiencia, incluyendo:
+
+- Qué tecnología o servicio de IA ofrece actualmente la mejor alternativa para traducción de voz en tiempo real.
+- Cómo capturar y transmitir la voz del predicador.
+- Cómo generar la traducción con la menor latencia posible.
+- Cómo distribuir una única traducción entre múltiples oyentes.
+- Cómo identificar a qué iglesia o servicio pertenece cada usuario.
+- Qué arquitectura conviene utilizar para el MVP sin impedir que posteriormente pueda escalarse.
+
+La prioridad de esta primera etapa es sencilla:
+
+**Demostrar que podemos escuchar una predicación traducida por IA, en vivo, con buena calidad y con un retraso suficientemente bajo para que la experiencia sea útil dentro de una iglesia.**
