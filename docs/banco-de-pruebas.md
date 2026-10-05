@@ -99,6 +99,80 @@ escuchada". El modelo del juez se configura con `JUDGE_MODEL` o `--model`.
 El juez es un apoyo para cubrir la prédica completa. La decisión la toman los
 evaluadores humanos.
 
+## Latencia como criterio de aprobación
+
+El umbral del MVP es **3 segundos** de retraso percibido por el oyente. Una
+traducción sostenida por encima de eso no cumple, aunque la calidad sea buena.
+El umbral se cambia con `--max-lag-sec` en `run` y en `judge`.
+
+El sistema en vivo suma entre 0,4 y 0,7 s a lo que mide el banco (distribución
+WebRTC, red del celular y buffer del reproductor). Para cumplir 3 s en la
+iglesia, un motor debe quedar por debajo de unos 2,5 s aquí.
+
+Hay tres mediciones, de la más rápida a la más exacta:
+
+1. **Retraso fin de frase (heurístico).** Sale de `run` sin nada más. En cada
+   pausa del predicador mide cuánto tarda en terminar la frase traducida.
+   Veredicto: `cumple` si la mediana está bajo el umbral y el p90 bajo 1,5
+   veces el umbral; `al límite` si solo la mediana cumple; `no cumple` si la
+   mediana lo supera.
+2. **Frases interactivas.** Una prueba específica para los momentos cortos
+   donde 4 o 5 segundos rompen la experiencia: "¡aplaudan!", "repitan
+   conmigo", preguntas, instrucciones. Cada frase está aislada por silencios
+   largos, así que su traducción se identifica sin ambigüedad y se mide
+   exacto: **desde que el pastor termina de decirla hasta que el oyente
+   termina de oírla**, y también hasta que empieza a oírla. Veredicto:
+   `cumple` si al menos el 90 % de las frases terminan de oírse dentro del
+   umbral; `al límite` desde el 70 %; `no cumple` por debajo. Una frase sin
+   traducción cuenta como fallida.
+3. **Retraso percibido (juez).** `judge` transcribe el audio traducido con
+   whisper, proyecta cada frase oída a la línea de tiempo del oyente con la
+   tabla de fragmentos de `eventos.jsonl`, la alinea con la frase original y
+   obtiene dos cifras por frase: inicio dicho → inicio oído, y fin dicho → fin
+   oído. De ahí sale la curva completa `retraso_percibido.csv` y dos
+   indicadores de "sostenido": la fracción del tiempo de escucha con retraso
+   por encima del umbral y el tramo continuo más largo por encima. Veredicto:
+   `cumple` con ≤ 10 % del tiempo y tramo ≤ 20 s; `al límite` hasta 25 %;
+   `no cumple` por encima.
+
+El reporte comparativo muestra los tres veredictos y un **veredicto global**
+que es el peor de ellos.
+
+### Prueba interactiva con voz sintética (repetible)
+
+```bash
+npm run bench -- phrases --phrases docs/frases-interactivas.txt --out samples/interactivas.wav --gap-sec 6
+npm run bench -- run --engine openai,gemini --input samples/interactivas.wav --manifest samples/interactivas.manifest.json --label interactivas
+```
+
+`phrases` genera cada frase del guion con voz sintética, las separa con 6 s de
+silencio y escribe un manifiesto con el instante exacto en que empieza y
+termina cada una. `run` imprime una línea por frase: estado, retraso hasta que
+empieza a oírse, retraso hasta que termina, y el texto que se oyó. El guion se
+puede editar; es un archivo de texto con una frase por línea.
+
+### Prueba interactiva con la voz real del pastor
+
+Grabar el mismo guion dejando al menos 2 segundos de silencio entre frases, y
+correr:
+
+```bash
+npm run bench -- run --engine openai,gemini --input samples/interactivas-pastor.wav --phrases docs/frases-interactivas.txt --label interactivas-pastor
+```
+
+Las frases se detectan por los silencios y se emparejan en orden con el guion.
+Si el número detectado no coincide, el banco lo avisa.
+
+### Qué esperar de cada motor
+
+Las mediciones independientes publicadas a mitad de 2026 dan ~0,7 s hasta el
+primer audio en OpenAI y ~2,9 s en Gemini. El primer audio no es el retraso
+percibido: la frase completa llega después. Es probable que Gemini quede fuera
+del umbral en las frases interactivas y que OpenAI quede dentro. Si ninguno
+cumple, el siguiente candidato es una cascada propia (reconocimiento en
+streaming, traducción por frases cortas y voz en streaming) donde el retraso se
+controla con el tamaño del segmento.
+
 ## Qué hay en cada carpeta de corrida
 
 | Archivo | Para qué sirve |
@@ -112,10 +186,12 @@ evaluadores humanos.
 | `metricas.json` | Todas las cifras, para el reporte. |
 | `eventos.jsonl` | Registro completo: cada fragmento de audio, cada texto, cada mensaje del protocolo. Para depurar. |
 | `corrida.json` | Configuración con la que se corrió. |
-| `juez.md` / `juez.json` | Resultado del juez automático, si se corrió. |
+| `juez.md` / `juez.json` | Resultado del juez automático, si se corrió: calidad y retraso percibido. |
+| `retraso_percibido.csv` | Curva de retraso percibido frase a frase (segundo de escucha, retraso), para graficar. |
 
 ## Cómo leer las métricas
 
+- **Criterio de latencia**: veredicto contra el umbral, ver la sección anterior.
 - **Primer audio traducido**: tiempo desde que la fuente empieza a hablar hasta el primer sonido traducido.
 - **Fin de frase → fin de traducción**: la métrica principal de retraso. En cada pausa natural del predicador (≥ 0,7 s) se mide cuánto tarda en terminar la frase traducida correspondiente. Se reportan mediana, p90 y p95, y cuántas frases se pudieron emparejar. Es lo que siente el oyente: "él ya terminó, yo todavía estoy escuchando".
 - **Inicio de frase → inicio de traducción**: cuánto espera el oyente desde que el pastor arranca una frase hasta que empieza a oírla.
@@ -147,7 +223,9 @@ frase a frase.
 |---|---|
 | Precisión (evaluadores) | Promedio ≥ 4 de 5 y ninguna cita bíblica con el sentido invertido |
 | Naturalidad (evaluadores) | Promedio ≥ 3,5 de 5 |
-| Retraso fin de frase | Mediana ≤ 3 s y p95 ≤ 5 s |
+| Retraso percibido (juez) | ≤ 10 % del tiempo de escucha por encima de 3 s; tramo más largo ≤ 20 s |
+| Frases interactivas | ≥ 90 % de las frases terminan de oírse en ≤ 3 s tras ser dichas |
+| Retraso fin de frase | Mediana ≤ 3 s y p90 ≤ 4,5 s |
 | Deriva | < 1 s de aumento en 60 min |
 | Estabilidad | Cero atascos en 60 min; rotaciones y reanudaciones inaudibles |
 | Experiencia | Los evaluadores lo usarían en lugar de un intérprete humano |
@@ -159,6 +237,8 @@ frase a frase.
 | OpenAI gpt-realtime-translate | ≈ 2,05 USD |
 | Gemini 3.5 Live Translate | 0 USD en preview; después ≈ 2,20 USD |
 | Transcripción de referencia (whisper-1) | ≈ 0,36 USD |
+| Transcripción de la traducción para el retraso percibido | ≈ 0,36 USD por motor |
+| Voz sintética para la prueba interactiva | centavos por guion |
 | Juez automático | depende del modelo; del orden de centavos a pocos dólares por hora de audio |
 
 Una comparación completa con 5 fragmentos y una prédica entera cuesta menos de

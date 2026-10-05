@@ -4,6 +4,7 @@ import { performance } from 'node:perf_hooks';
 import { createEngine, readWav, resampleLinear, sleep, toMono, WavWriter, type EngineEvent, type TranslationEngine } from '@voice-traductor/engines';
 import { encodeMp3, ffmpegAvailable, loadAudioAtRate } from './audio-load.js';
 import { computeMetrics, type ChunkRec, type Metrics, type StatusRec, type TranscriptRec } from './metrics.js';
+import { detectPhrasesByVad, loadManifest, loadPhraseList, type PhraseSpec } from './phrases.js';
 import { renderSummary } from './summary.js';
 import { fmtClock, timestampLabel } from './util.js';
 
@@ -24,6 +25,12 @@ export interface RunConfig {
   mp3?: boolean;
   finishTimeoutMs?: number;
   vadThresholdDb?: number;
+  /** Umbral de latencia del MVP (ms). Por defecto 3000. */
+  thresholdMs?: number;
+  /** Manifiesto de frases interactivas con tiempos exactos (generado por `phrases`). */
+  manifest?: string;
+  /** Guion de frases interactivas grabado con voz propia: se detectan por silencio y se emparejan en orden. */
+  phrasesFile?: string;
   progressEveryMs?: number;
   log?: (line: string) => void;
   signal?: AbortSignal;
@@ -127,7 +134,7 @@ class EngineRun {
     }
   }
 
-  async finalize(o: { source: Int16Array; sourceRate: number; sourceEndMs: number; runEndMs: number; vadThresholdDb?: number; mp3: boolean; config: unknown }): Promise<Metrics> {
+  async finalize(o: { source: Int16Array; sourceRate: number; sourceEndMs: number; runEndMs: number; vadThresholdDb?: number; thresholdMs?: number; phrases?: PhraseSpec[]; mp3: boolean; config: unknown }): Promise<Metrics> {
     this.detach();
     this.aligned.close();
     this.raw.close();
@@ -151,6 +158,8 @@ class EngineRun {
       sourceEndMs: o.sourceEndMs,
       runEndMs: o.runEndMs,
       vadThresholdDb: o.vadThresholdDb,
+      thresholdMs: o.thresholdMs,
+      phrases: o.phrases,
     });
     writeFileSync(join(this.dir, 'metricas.json'), JSON.stringify(metrics, null, 2));
     writeFileSync(join(this.dir, 'resumen.md'), renderSummary(metrics, { fatal: this.fatal }));
@@ -190,6 +199,16 @@ export async function runBench(cfg: RunConfig): Promise<RunResult[]> {
   }
   const anyRate = engines[0].inputSampleRate;
   const sourceDurationMs = (sources.get(anyRate)!.length / anyRate) * 1000;
+  let phrases: PhraseSpec[] | undefined;
+  if (cfg.manifest) {
+    phrases = loadManifest(cfg.manifest).phrases.filter((p) => p.endMs <= sourceDurationMs);
+    log(`Prueba interactiva: ${phrases.length} frases del manifiesto ${cfg.manifest}.`);
+  } else if (cfg.phrasesFile) {
+    const texts = loadPhraseList(cfg.phrasesFile);
+    phrases = detectPhrasesByVad(sources.get(anyRate)!, anyRate, texts, { thresholdDb: cfg.vadThresholdDb });
+    log(`Prueba interactiva: ${phrases.length} frases detectadas por silencio en la grabación (${texts.length} en el guion).`);
+    if (phrases.length !== texts.length) log('Aviso: el número de frases detectadas no coincide con el guion; revisar que haya al menos 1,5 s de silencio entre frases.');
+  }
   log(`Fuente: ${fmtClock(sourceDurationMs)} de audio. Motores: ${engines.map((e) => e.name).join(', ')}. Destino: ${cfg.targetLanguage}.`);
 
   const mp3 = Boolean(cfg.mp3) && (await ffmpegAvailable());
@@ -261,10 +280,10 @@ export async function runBench(cfg: RunConfig): Promise<RunResult[]> {
   await Promise.all(runs.map((r) => r.engine.stop()));
 
   const results: RunResult[] = [];
-  const config = { input: cfg.input, targetLanguage: cfg.targetLanguage, sourceLanguageHint: cfg.sourceLanguageHint, chunkMs, maxMinutes: cfg.maxMinutes, startMs: cfg.startMs, engineOptions: cfg.engineOptions, startedAt: new Date(Date.now() - runEndMs).toISOString() };
+  const config = { input: cfg.input, targetLanguage: cfg.targetLanguage, sourceLanguageHint: cfg.sourceLanguageHint, chunkMs, maxMinutes: cfg.maxMinutes, startMs: cfg.startMs, engineOptions: cfg.engineOptions, thresholdMs: cfg.thresholdMs ?? 3000, manifest: cfg.manifest, phrasesFile: cfg.phrasesFile, startedAt: new Date(Date.now() - runEndMs).toISOString() };
   for (const r of runs) {
     log(`Calculando métricas de ${r.engine.name}...`);
-    const metrics = await r.finalize({ source: sources.get(r.engine.inputSampleRate)!, sourceRate: r.engine.inputSampleRate, sourceEndMs, runEndMs, vadThresholdDb: cfg.vadThresholdDb, mp3, config });
+    const metrics = await r.finalize({ source: sources.get(r.engine.inputSampleRate)!, sourceRate: r.engine.inputSampleRate, sourceEndMs, runEndMs, vadThresholdDb: cfg.vadThresholdDb, thresholdMs: cfg.thresholdMs, phrases, mp3, config });
     results.push({ engine: r.engine.name, dir: r.dir, metrics });
   }
   return results;

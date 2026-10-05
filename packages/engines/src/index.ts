@@ -6,4 +6,4 @@ export { MockEngine, type MockEngineOptions } from './engines/mock.js';
 export { createEngine, isEngineName, ENGINE_NAMES, type EngineName, type CreateEngineOptions } from './registry.js';
 export * from './audio/pcm.js';
 export { resampleLinear } from './audio/resample.js';
-export { parseWav, readWav, toMono, writeWav, WavWriter, type WavData } from './audio/wav.js';
+export { parseWav, readWav, readWavHeader, toMono, writeWav, WavWriter, type WavData } from './audio/wav.js';

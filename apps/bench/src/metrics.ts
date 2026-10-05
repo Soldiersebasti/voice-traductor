@@ -1,5 +1,7 @@
-import { detectSpeech, overlapMs, totalMs, type Segment } from './vad.js';
+import { verdictFromLag, verdictFromPassRate, type Verdict } from './criteria.js';
+import { evaluatePhrases, type PhraseSpec, type PhraseStats } from './phrases.js';
 import { median, percentile } from './util.js';
+import { detectSpeech, overlapMs, totalMs, type Segment } from './vad.js';
 
 export interface ChunkRec {
   /** Momento de llegada (ms desde el inicio de la reproducción). */
@@ -41,6 +43,10 @@ export interface MetricsInput {
   sourceEndMs: number;
   runEndMs: number;
   vadThresholdDb?: number;
+  /** Umbral de latencia del MVP (ms). Por defecto 3000. */
+  thresholdMs?: number;
+  /** Frases cortas interactivas con sus tiempos exactos, si la corrida fue sobre un guion. */
+  phrases?: PhraseSpec[];
 }
 
 export interface LagSample {
@@ -93,6 +99,9 @@ export interface Metrics {
     events: StatusRec[];
   };
   captions: { targetChars: number; sourceChars: number; targetDeltas: number };
+  /** Veredicto contra el umbral de latencia. `heuristic` usa el retraso fin de frase; `phrases` la prueba interactiva. */
+  latency: { thresholdMs: number; heuristic: Verdict; phrases: Verdict };
+  phrases: PhraseStats | null;
   vad: { thresholdDb: number | null; pauseMs: number; minLagMs: number; maxLagMs: number };
 }
 
@@ -135,6 +144,9 @@ export function computeMetrics(inp: MetricsInput): Metrics {
     if (s.code === 'audio.buffered_flush') droppedAudioMs += Number((s.data as { droppedMs?: number } | undefined)?.droppedMs ?? 0);
   }
 
+  const thresholdMs = inp.thresholdMs ?? 3000;
+  const phrases = inp.phrases?.length ? evaluatePhrases(inp.phrases, inp.output, inp.outputRate, inp.transcripts, thresholdMs, inp.vadThresholdDb) : null;
+
   const targetDeltas = inp.transcripts.filter((t) => t.channel === 'target' && !t.final);
   const sourceDeltas = inp.transcripts.filter((t) => t.channel === 'source' && !t.final);
 
@@ -170,6 +182,8 @@ export function computeMetrics(inp: MetricsInput): Metrics {
       sourceChars: sourceDeltas.reduce((a, t) => a + t.text.length, 0),
       targetDeltas: targetDeltas.length,
     },
+    latency: { thresholdMs, heuristic: verdictFromLag(endLag.medianMs, endLag.p90Ms, thresholdMs), phrases: verdictFromPassRate(phrases?.passRate ?? null) },
+    phrases,
     vad: { thresholdDb: inp.vadThresholdDb ?? null, pauseMs: PAUSE_MS, minLagMs: MIN_LAG_MS, maxLagMs: MAX_LAG_MS },
   };
 }

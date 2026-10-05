@@ -137,7 +137,10 @@ npm install
 npm test
 npm run bench -- help
 npm run bench -- run --engine openai,gemini --input samples/sermon1.wav --label sermon1 --mp3
+npm run bench -- phrases && npm run bench -- run --engine openai,gemini --input samples/interactivas.wav --manifest samples/interactivas.manifest.json --label interactivas
 ```
+
+La latencia es criterio de aprobación: umbral de 3 s de retraso percibido por el oyente, con una prueba específica de frases cortas interactivas.
 
 Estructura:
 

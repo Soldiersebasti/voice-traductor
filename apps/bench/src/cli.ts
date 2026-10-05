@@ -8,7 +8,9 @@ import { judgeRun } from './judge.js';
 import { loadRun, renderReport } from './report.js';
 import { runBench } from './run.js';
 import { writeSynthWav } from './synth.js';
+import { loadPhraseList } from './phrases.js';
 import { loadReference, transcribeReference } from './transcribe.js';
+import { manifestPathFor, synthesizePhraseFile } from './tts.js';
 import { fmtClock, fmtSec, loadDotEnv } from './util.js';
 
 const HELP = `Banco de pruebas de traducción en vivo
@@ -22,6 +24,7 @@ Comandos
   transcribe  Transcripción de referencia del original con tiempos (whisper-1). Necesaria para judge.
   judge       Juez automático: alinea y califica la traducción de una corrida contra la referencia.
   report      Tabla comparativa en markdown a partir de varias corridas.
+  phrases     Genera el audio de la prueba interactiva (frases cortas con voz sintética) y su manifiesto de tiempos.
 
 run
   --engine <openai|gemini|mock|lista,separada,por,comas>   (obligatorio)
@@ -37,11 +40,15 @@ run
   --mp3                        además genera mp3 de los archivos de escucha (requiere ffmpeg)
   --finish-timeout-sec <n>     espera máxima al final, por defecto 20
   --vad-db <n>                 umbral fijo del detector de voz en dBFS (por defecto, automático)
+  --max-lag-sec <n>            umbral de latencia del MVP, por defecto 3
+  --manifest <archivo.json>    prueba interactiva con tiempos exactos (salida del comando phrases)
+  --phrases <archivo.txt>      prueba interactiva grabada con voz propia; las frases se detectan por silencio
 
 synth      --out <archivo.wav> [--seconds 60] [--rate 16000]
 prepare    --input <archivo> --out <archivo.wav> [--rate 24000] [--start-sec n] [--max-minutes n]
 transcribe --input <archivo> [--language es] [--out <referencia.json>]
-judge      --run <carpeta de corrida> --reference <referencia.json> [--model gpt-5] [--target en]
+judge      --run <carpeta de corrida> --reference <referencia.json> [--model gpt-5] [--target en] [--max-lag-sec 3] [--no-perceived]
+phrases    --phrases docs/frases-interactivas.txt --out samples/interactivas.wav [--gap-sec 6] [--voice onyx] [--tts-model gpt-4o-mini-tts]
 report     <carpeta1> <carpeta2> ... [--out runs/reporte.md]
 
 Variables de entorno (.env): OPENAI_API_KEY, GEMINI_API_KEY, JUDGE_MODEL
@@ -73,6 +80,13 @@ async function main(argv: string[]): Promise<void> {
       run: { type: 'string' },
       reference: { type: 'string' },
       model: { type: 'string' },
+      'max-lag-sec': { type: 'string' },
+      manifest: { type: 'string' },
+      phrases: { type: 'string' },
+      'gap-sec': { type: 'string' },
+      voice: { type: 'string' },
+      'tts-model': { type: 'string' },
+      'no-perceived': { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
   });
@@ -111,6 +125,9 @@ async function main(argv: string[]): Promise<void> {
         mp3: values.mp3,
         finishTimeoutMs: values['finish-timeout-sec'] ? Number(values['finish-timeout-sec']) * 1000 : undefined,
         vadThresholdDb: num(values['vad-db']),
+        thresholdMs: values['max-lag-sec'] ? Number(values['max-lag-sec']) * 1000 : undefined,
+        manifest: values.manifest,
+        phrasesFile: values.phrases,
         log,
         signal: controller.signal,
       });
@@ -119,6 +136,10 @@ async function main(argv: string[]): Promise<void> {
         const m = r.metrics;
         console.log(`== ${r.engine} → ${r.dir}`);
         console.log(`   primer audio ${fmtSec(m.firstAudio?.latencyMs)} | retraso fin de frase mediana ${fmtSec(m.phraseEndLag.medianMs)} p95 ${fmtSec(m.phraseEndLag.p95Ms)} (${m.phraseEndLag.anchors} frases) | deriva ${m.drift.slopeSecPer10Min === null ? '-' : m.drift.slopeSecPer10Min.toFixed(2) + ' s/10min'} | atascos ${m.stalls.length} | reconexiones ${m.stability.reconnects} | errores ${m.stability.errors}`);
+        console.log(`   latencia ≤ ${fmtSec(m.latency.thresholdMs, 1)}: fin de frase ${m.latency.heuristic}${m.phrases ? ` | frases interactivas ${m.latency.phrases} (${m.phrases.passed}/${m.phrases.total}, mediana fin→fin ${fmtSec(m.phrases.endLag.medianMs)}, máx ${fmtSec(m.phrases.endLag.maxMs)})` : ''}`);
+        if (m.phrases) {
+          for (const f of m.phrases.results) console.log(`     ${String(f.id).padStart(2)}. ${f.ok === null ? 'SIN TRADUCCIÓN' : f.ok ? 'ok   ' : 'TARDE'} inicio ${fmtSec(f.startLagMs)} fin ${fmtSec(f.endLagMs)}  "${f.text}" → "${f.heardText || '-'}"`);
+        }
       }
       if (results.length > 1) {
         const reportPath = join(values.out ?? 'runs', `${basename(results[0].dir).replace(/-[a-z]+$/, '')}-reporte.md`);
@@ -158,8 +179,22 @@ async function main(argv: string[]): Promise<void> {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) throw new Error('Falta OPENAI_API_KEY en .env');
       const model = values.model ?? process.env.JUDGE_MODEL ?? 'gpt-5';
-      const res = await judgeRun({ runDir: values.run, reference: loadReference(values.reference), apiKey, model, targetLanguage: values.target, log });
-      console.log(`Juez: puntaje medio ${res.meanScore?.toFixed(2) ?? '-'} de 5 en ${res.scored} frases; retraso alineado mediana ${fmtSec(res.lag.medianMs)}; ${res.critical.length} frases críticas; ${res.omittedSource.length} segmentos sin traducir. Detalle en ${join(values.run, 'juez.md')}`);
+      const res = await judgeRun({ runDir: values.run, reference: loadReference(values.reference), apiKey, model, targetLanguage: values.target, thresholdMs: values['max-lag-sec'] ? Number(values['max-lag-sec']) * 1000 : undefined, perceived: !values['no-perceived'], log });
+      const p = res.perceived;
+      console.log(`Juez: puntaje medio ${res.meanScore?.toFixed(2) ?? '-'} de 5 en ${res.scored} frases; ${res.critical.length} frases críticas; ${res.omittedSource.length} segmentos sin traducir.`);
+      console.log(`Retraso percibido: ${p.verdict} | inicio→inicio mediana ${fmtSec(p.lagStart.medianMs)} p90 ${fmtSec(p.lagStart.p90Ms)} | fin→fin mediana ${fmtSec(p.lagEnd.medianMs)} p90 ${fmtSec(p.lagEnd.p90Ms)} | ${p.shareAboveThreshold === null ? '-' : Math.round(p.shareAboveThreshold * 100) + '%'} del tiempo de escucha sobre ${fmtSec(p.thresholdMs, 1)} | tramo más largo ${fmtSec(p.longestAboveMs, 1)}. Detalle en ${join(values.run, 'juez.md')}`);
+      return;
+    }
+    case 'phrases': {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) throw new Error('Falta OPENAI_API_KEY en .env');
+      const phrasesPath = values.phrases ?? 'docs/frases-interactivas.txt';
+      const out = values.out ?? 'samples/interactivas.wav';
+      mkdirSync(dirname(out), { recursive: true });
+      const manifest = await synthesizePhraseFile({ phrases: loadPhraseList(phrasesPath), out, apiKey, gapMs: values['gap-sec'] ? Number(values['gap-sec']) * 1000 : undefined, voice: values.voice, model: values['tts-model'], log });
+      const last = manifest.phrases[manifest.phrases.length - 1];
+      console.log(`Escrito ${out} (${manifest.phrases.length} frases, ${fmtClock((last?.endMs ?? 0) + manifest.gapMs)}) y ${manifestPathFor(out)}.`);
+      console.log(`Siguiente: npm run bench -- run --engine openai,gemini --input ${out} --manifest ${manifestPathFor(out)} --label interactivas`);
       return;
     }
     case 'report': {

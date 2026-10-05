@@ -7,10 +7,17 @@ function lagLine(l: LagStats): string {
 }
 
 export function renderSummary(m: Metrics, o: { fatal?: string | null } = {}): string {
+  const T = m.latency.thresholdMs;
   const lines: string[] = [];
   lines.push(`# Resumen: ${m.label}`, '');
   lines.push(`Motor: **${m.engine}**. Fuente: ${fmtClock(m.sourceDurationMs)}. Corrida total: ${fmtClock(m.runDurationMs)}.`, '');
   if (o.fatal) lines.push(`> **Error fatal durante la corrida:** ${o.fatal}`, '');
+
+  lines.push(`## Criterio de latencia (umbral ${fmtSec(T, 1)})`, '');
+  lines.push(`- Retraso fin de frase (heurístico): **${m.latency.heuristic}** (mediana ${fmtSec(m.phraseEndLag.medianMs)}, p90 ${fmtSec(m.phraseEndLag.p90Ms)}).`);
+  if (m.phrases) lines.push(`- Frases interactivas: **${m.latency.phrases}** (${m.phrases.passed} de ${m.phrases.total} dentro del umbral).`);
+  lines.push('- Retraso percibido frase a frase: ver `juez.md` después de correr `judge`.');
+  lines.push(`- El sistema en vivo suma entre 0,4 y 0,7 s por la distribución y el reproductor del celular. Para cumplir ${fmtSec(T, 1)} en la iglesia, aquí conviene quedar por debajo de ${fmtSec(T - 500, 1)}.`, '');
 
   lines.push('## Retraso', '');
   lines.push(`- Primer audio traducido: ${m.firstAudio?.latencyMs != null ? fmtSec(m.firstAudio.latencyMs) : '-'} después de que empezó a hablar la fuente.`);
@@ -19,6 +26,20 @@ export function renderSummary(m: Metrics, o: { fatal?: string | null } = {}): st
   lines.push(`- Inicio de frase → inicio de traducción: ${lagLine(m.phraseStartLag)}.`);
   lines.push(`- Retraso al final del audio: ${fmtSec(m.tailLagMs)}.`);
   lines.push(`- Cola máxima del reproductor: ${fmtSec(m.maxQueueMs)} (cuánto audio llegó "de golpe" por delante de su reproducción).`, '');
+
+  if (m.phrases) {
+    const p = m.phrases;
+    lines.push('## Frases interactivas', '');
+    lines.push(`- ${p.total} frases del guion; ${p.answered} con traducción; ${p.passed} terminaron de oírse dentro de ${fmtSec(T, 1)} tras ser dichas (${p.passRate === null ? '-' : Math.round(p.passRate * 100) + '%'}).`);
+    lines.push(`- Fin dicho → fin oído: mediana ${fmtSec(p.endLag.medianMs)}, p90 ${fmtSec(p.endLag.p90Ms)}, máx ${fmtSec(p.endLag.maxMs)}.`);
+    lines.push(`- Fin dicho → inicio oído: mediana ${fmtSec(p.startLag.medianMs)}, p90 ${fmtSec(p.startLag.p90Ms)}, máx ${fmtSec(p.startLag.maxMs)}.`, '');
+    lines.push('| # | Frase | Dura | Fin dicho → inicio oído | Fin dicho → fin oído | Estado | Lo que se oyó |', '|---|---|---|---|---|---|---|');
+    for (const r of p.results) {
+      const estado = r.ok === null ? 'sin traducción' : r.ok ? 'ok' : 'tarde';
+      lines.push(`| ${r.id} | ${r.text} | ${fmtSec(r.durationMs, 1)} | ${fmtSec(r.startLagMs)} | ${fmtSec(r.endLagMs)} | ${estado} | ${r.heardText.replace(/\|/g, '/') || '-'} |`);
+    }
+    lines.push('');
+  }
 
   lines.push('## Deriva (¿el retraso crece con el tiempo?)', '');
   lines.push(`- Pendiente: ${m.drift.slopeSecPer10Min === null ? '-' : m.drift.slopeSecPer10Min.toFixed(2) + ' s cada 10 min'}.`);
@@ -50,6 +71,6 @@ export function renderSummary(m: Metrics, o: { fatal?: string | null } = {}): st
   lines.push('- `traduccion_cruda.wav`: solo la traducción, sin silencios, para juzgar naturalidad.');
   lines.push('- `transcripcion_traduccion.txt` y `transcripcion_original.txt`: textos devueltos por el motor.');
   lines.push('- `metricas.json`: todas las cifras. `eventos.jsonl`: registro completo para depurar.', '');
-  lines.push('Nota: los retrasos por frase salen de un detector de voz por energía y un emparejamiento en orden; son una heurística robusta en la mediana. El comando `judge` alinea frase a frase con un modelo de lenguaje y da la cifra exacta.', '');
+  lines.push('Nota: los retrasos por frase de esta página salen de un detector de voz por energía y un emparejamiento por pausas; son una heurística robusta en la mediana. El comando `judge` transcribe la traducción, alinea frase a frase con un modelo de lenguaje y entrega el retraso percibido exacto.', '');
   return lines.join('\n');
 }

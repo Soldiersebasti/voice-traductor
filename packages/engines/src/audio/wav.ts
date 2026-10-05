@@ -1,4 +1,4 @@
-import { closeSync, openSync, readFileSync, writeSync } from 'node:fs';
+import { closeSync, openSync, readFileSync, readSync, writeSync } from 'node:fs';
 
 export interface WavData {
   sampleRate: number;
@@ -44,6 +44,19 @@ export function parseWav(buf: Buffer): WavData {
 
 export function readWav(path: string): WavData {
   return parseWav(readFileSync(path));
+}
+
+/** Tasa de muestreo y canales sin cargar el archivo completo. */
+export function readWavHeader(path: string): { sampleRate: number; channels: number } {
+  const fd = openSync(path, 'r');
+  try {
+    const head = Buffer.alloc(4096);
+    const n = readSync(fd, head, 0, head.length, 0);
+    const w = parseWav(head.subarray(0, n));
+    return { sampleRate: w.sampleRate, channels: w.channels };
+  } finally {
+    closeSync(fd);
+  }
 }
 
 export function toMono(w: WavData): Int16Array {
