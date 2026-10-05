@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readWavHeader, sleep } from '@voice-traductor/engines';
+import { renderLagChartSvg } from './chart.js';
 import { verdictFromPerceived, type Verdict } from './criteria.js';
 import { transcribeAudio, type Reference, type ReferenceSegment } from './transcribe.js';
 import { fmtClock, fmtSec, median, percentile } from './util.js';
@@ -88,6 +89,13 @@ export interface JudgeResult {
     longestAboveMs: number | null;
     listeningMs: number;
     verdict: Verdict;
+    /** Fracción de frases que el oyente empezó a oír antes de que el pastor terminara de decirlas. */
+    overlapShare: number | null;
+    drift: { slopeSecPer10Min: number | null; windows: Array<{ startMs: number; endMs: number; n: number; medianLagMs: number | null }> };
+    /** Caídas bruscas del retraso entre frases consecutivas: el motor se saltó contenido para alcanzar. */
+    jumps: Array<{ heardMs: number; fromMs: number; toMs: number; text: string }>;
+    qualityByLag: Array<{ label: string; n: number; meanScore: number | null }>;
+    backlog: Array<{ tMs: number; backlogMs: number; speaking: boolean }>;
   };
   items: JudgeItem[];
 }
@@ -244,6 +252,15 @@ export async function judgeRun(o: JudgeOptions): Promise<JudgeResult> {
   writeFileSync(join(o.runDir, 'juez.json'), JSON.stringify(result, null, 2));
   writeFileSync(join(o.runDir, 'juez.md'), renderJudge(result));
   writeFileSync(join(o.runDir, 'retraso_percibido.csv'), perceivedCsv(items));
+  writeFileSync(join(o.runDir, 'retraso_continuo.csv'), 'segundo,atraso_s,hablando\n' + result.perceived.backlog.map((b) => `${(b.tMs / 1000).toFixed(0)},${(b.backlogMs / 1000).toFixed(2)},${b.speaking ? 'si' : 'no'}`).join('\n') + '\n');
+  writeFileSync(join(o.runDir, 'retraso_percibido.svg'), renderLagChartSvg({
+    title: `Retraso percibido por el oyente: ${o.runDir.split(/[\\/]/).pop() ?? ''}`,
+    subtitle: `inicio→inicio mediana ${fmtSec(result.perceived.lagStart.medianMs)} · fin→fin mediana ${fmtSec(result.perceived.lagEnd.medianMs)} · ${result.perceived.shareAboveThreshold === null ? '-' : Math.round(result.perceived.shareAboveThreshold * 100) + '%'} del tiempo sobre el umbral · veredicto ${result.perceived.verdict}`,
+    thresholdMs,
+    endMs: Math.max(...items.map((i) => i.heardEndMs ?? 0), 1000),
+    points: items.flatMap((i) => (typeof i.lagStartMs === 'number' && typeof i.lagEndMs === 'number' ? [{ tMs: i.heardMs ?? 0, lagMs: i.lagStartMs, kind: 'inicio' as const, text: i.text }, { tMs: i.heardEndMs ?? 0, lagMs: i.lagEndMs, kind: 'fin' as const, text: i.text }] : [])),
+    backlog: result.perceived.backlog,
+  }));
   return result;
 }
 
@@ -277,6 +294,56 @@ export function perceivedStats(items: JudgeItem[], thresholdMs: number): JudgeRe
     prevEnd = i.heardEndMs as number;
   }
   const share = listening > 0 ? above / listening : null;
+  const sorted = [...plausible].sort((a, b) => (a.heardMs as number) - (b.heardMs as number));
+
+  // ¿Empezó a oírse antes de que el pastor terminara la frase?
+  const withEnd = sorted.filter((i) => typeof i.sourceEndMs === 'number');
+  const overlapShare = withEnd.length ? withEnd.filter((i) => (i.heardMs as number) < (i.sourceEndMs as number)).length / withEnd.length : null;
+
+  // Deriva: pendiente del retraso fin→fin sobre el tiempo de escucha, y mediana por ventanas de 5 min.
+  const endMs = sorted.length ? Math.max(...sorted.map((i) => i.heardEndMs as number)) : 0;
+  const windows: JudgeResult['perceived']['drift']['windows'] = [];
+  for (let ws = 0; ws < Math.max(endMs, 1); ws += 300_000) {
+    const we = Math.min(endMs, ws + 300_000);
+    const v = sorted.filter((i) => (i.heardMs as number) >= ws && (i.heardMs as number) < we).map((i) => i.lagEndMs as number);
+    windows.push({ startMs: ws, endMs: we, n: v.length, medianLagMs: v.length ? median(v) : null });
+  }
+  let slope: number | null = null;
+  if (sorted.length >= 4) {
+    const n = sorted.length;
+    const mx = sorted.reduce((a, i) => a + (i.heardMs as number), 0) / n;
+    const my = sorted.reduce((a, i) => a + (i.lagEndMs as number), 0) / n;
+    let num = 0;
+    let den = 0;
+    for (const i of sorted) {
+      num += ((i.heardMs as number) - mx) * ((i.lagEndMs as number) - my);
+      den += ((i.heardMs as number) - mx) ** 2;
+    }
+    if (den > 0) slope = ((num / den) * 600_000) / 1000;
+  }
+
+  // Saltos: el retraso cae más de 1,5 s de una frase a la siguiente.
+  const jumps: JudgeResult['perceived']['jumps'] = [];
+  for (let k = 1; k < sorted.length; k++) {
+    const prev = sorted[k - 1].lagEndMs as number;
+    const cur = sorted[k].lagEndMs as number;
+    if (prev - cur > 1500) jumps.push({ heardMs: sorted[k].heardMs as number, fromMs: prev, toMs: cur, text: sorted[k].text ?? '' });
+  }
+
+  // Calidad según el retraso con el que llegó cada frase.
+  const buckets: Array<{ label: string; test: (lag: number) => boolean }> = [
+    { label: '≤ 2 s', test: (l) => l <= 2000 },
+    { label: '2 a 3 s', test: (l) => l > 2000 && l <= 3000 },
+    { label: '3 a 5 s', test: (l) => l > 3000 && l <= 5000 },
+    { label: '> 5 s', test: (l) => l > 5000 },
+    { label: '≤ 3 s', test: (l) => l <= 3000 },
+    { label: '> 3 s', test: (l) => l > 3000 },
+  ];
+  const qualityByLag = buckets.map((b) => {
+    const v = sorted.filter((i) => b.test(i.lagEndMs as number) && i.score >= 1 && i.score <= 5).map((i) => i.score);
+    return { label: b.label, n: v.length, meanScore: v.length ? v.reduce((a, x) => a + x, 0) / v.length : null };
+  });
+
   return {
     thresholdMs,
     lagStart: summary(plausible.map((i) => i.lagStartMs as number)),
@@ -285,7 +352,43 @@ export function perceivedStats(items: JudgeItem[], thresholdMs: number): JudgeRe
     longestAboveMs: listening > 0 ? longest : null,
     listeningMs: listening,
     verdict: verdictFromPerceived(share, listening > 0 ? longest : null),
+    overlapShare,
+    drift: { slopeSecPer10Min: slope, windows },
+    jumps,
+    qualityByLag,
+    backlog: backlogSeries(sorted),
   };
+}
+
+/**
+ * Atraso acumulado segundo a segundo: en cada instante de escucha, cuánto
+ * tiempo del original lleva el oyente "por detrás". Dentro de una frase oída
+ * se interpola entre su inicio y su fin; entre frases, el original avanza y
+ * lo oído no, así que el atraso crece hasta la siguiente frase.
+ */
+export function backlogSeries(sorted: JudgeItem[]): Array<{ tMs: number; backlogMs: number; speaking: boolean }> {
+  const out: Array<{ tMs: number; backlogMs: number; speaking: boolean }> = [];
+  if (!sorted.length) return out;
+  const endMs = Math.max(...sorted.map((i) => i.heardEndMs as number));
+  let k = 0;
+  let deliveredIdle = 0;
+  for (let t = Math.floor((sorted[0].heardMs as number) / 1000) * 1000; t <= endMs; t += 1000) {
+    while (k + 1 < sorted.length && (sorted[k + 1].heardMs as number) <= t) k++;
+    const it = sorted[k];
+    const hs = it.heardMs as number;
+    const he = it.heardEndMs as number;
+    const ss = it.sourceStartMs as number;
+    const se = it.sourceEndMs as number;
+    deliveredIdle = Math.max(deliveredIdle, ...sorted.slice(0, k).map((p) => p.sourceEndMs as number));
+    if (t >= hs && t <= he && he > hs) {
+      const delivered = ss + ((t - hs) / (he - hs)) * (se - ss);
+      out.push({ tMs: t, backlogMs: Math.max(0, t - Math.max(delivered, deliveredIdle)), speaking: true });
+    } else {
+      const delivered = Math.max(deliveredIdle, t > he ? se : deliveredIdle);
+      out.push({ tMs: t, backlogMs: Math.max(0, t - delivered), speaking: false });
+    }
+  }
+  return out;
 }
 
 function perceivedCsv(items: JudgeItem[]): string {
@@ -353,7 +456,12 @@ export function renderJudge(r: JudgeResult): string {
   l.push(`- Fin de frase dicha → fin de frase oída: mediana ${fmtSec(p.lagEnd.medianMs)}, p90 ${fmtSec(p.lagEnd.p90Ms)}, p95 ${fmtSec(p.lagEnd.p95Ms)}, máx ${fmtSec(p.lagEnd.maxMs)}.`);
   l.push(`- Tiempo de escucha con retraso por encima del umbral: ${p.shareAboveThreshold === null ? '-' : Math.round(p.shareAboveThreshold * 100) + '%'} de ${fmtClock(p.listeningMs)}.`);
   l.push(`- Tramo continuo más largo por encima del umbral: ${fmtSec(p.longestAboveMs, 1)}.`);
-  l.push(`- Curva completa en \`retraso_percibido.csv\` (segundo de escucha, retraso).`, '');
+  l.push(`- Frases que el oyente empezó a oír antes de que el pastor terminara de decirlas: ${p.overlapShare === null ? '-' : Math.round(p.overlapShare * 100) + '%'} (interpretación simultánea real si es alto; consecutiva si es bajo).`);
+  l.push(`- Deriva: ${p.drift.slopeSecPer10Min === null ? '-' : p.drift.slopeSecPer10Min.toFixed(2) + ' s cada 10 min'}. Mediana por ventana: ${p.drift.windows.map((w) => `${fmtClock(w.startMs)} ${fmtSec(w.medianLagMs, 1)}`).join(' · ')}.`);
+  l.push(`- Saltos (el retraso cae más de 1,5 s de una frase a la siguiente, señal de contenido saltado): ${p.jumps.length}.`);
+  for (const j of p.jumps.slice(0, 15)) l.push(`  - [${fmtClock(j.heardMs)}] de ${fmtSec(j.fromMs, 1)} a ${fmtSec(j.toMs, 1)}: "${j.text}"`);
+  l.push(`- Calidad según el retraso de llegada: ${p.qualityByLag.filter((b) => !['≤ 3 s', '> 3 s'].includes(b.label)).map((b) => `${b.label}: ${b.meanScore === null ? '-' : b.meanScore.toFixed(2)} (${b.n})`).join(' · ')}.`);
+  l.push(`- Gráfica en \`retraso_percibido.svg\`; curvas en \`retraso_percibido.csv\` (por frase) y \`retraso_continuo.csv\` (segundo a segundo).`, '');
   l.push('## Calidad', '');
   l.push(`- Frases oídas: ${r.sentences}; calificadas: ${r.scored}.`);
   l.push(`- Puntaje medio: ${r.meanScore === null ? '-' : r.meanScore.toFixed(2)} de 5. Frases con 4 o más: ${r.shareAtLeast4 === null ? '-' : Math.round(r.shareAtLeast4 * 100) + '%'}.`);

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { TranscriptRec } from './metrics.js';
+import type { Reference } from './transcribe.js';
 import { median, percentile } from './util.js';
 import { detectSpeech } from './vad.js';
 
@@ -20,7 +21,23 @@ export interface PhraseManifest {
   source: string;
   createdAt: string;
   gapMs: number;
+  /** `aislado`: frases separadas por silencios largos. `continuo`: lectura seguida, sin pausas artificiales. */
+  mode?: 'aislado' | 'continuo';
   phrases: PhraseSpec[];
+}
+
+/** Un manifiesto con tiempos exactos sirve de transcripción de referencia sin pasar por whisper. */
+export function referenceFromManifest(m: PhraseManifest, language = 'es'): Reference {
+  return { source: m.source, language, model: 'manifiesto', createdAt: m.createdAt, segments: m.phrases.map((p) => ({ id: p.id, start: p.startMs, end: p.endMs, text: p.text })) };
+}
+
+/** Parte un texto en frases por puntuación final. */
+export function splitSentences(text: string): string[] {
+  return text
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?…])\s+(?=[^a-záéíóúñ])/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 export interface PhraseResult extends PhraseSpec {

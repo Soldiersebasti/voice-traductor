@@ -201,8 +201,13 @@ export async function runBench(cfg: RunConfig): Promise<RunResult[]> {
   const sourceDurationMs = (sources.get(anyRate)!.length / anyRate) * 1000;
   let phrases: PhraseSpec[] | undefined;
   if (cfg.manifest) {
-    phrases = loadManifest(cfg.manifest).phrases.filter((p) => p.endMs <= sourceDurationMs);
-    log(`Prueba interactiva: ${phrases.length} frases del manifiesto ${cfg.manifest}.`);
+    const manifest = loadManifest(cfg.manifest);
+    if (manifest.mode === 'continuo') {
+      log(`Manifiesto continuo (${manifest.phrases.length} frases seguidas): no se evalúa como frases aisladas; usar \`judge --manifest\` para el retraso percibido con tiempos exactos.`);
+    } else {
+      phrases = manifest.phrases.filter((p) => p.endMs <= sourceDurationMs);
+      log(`Prueba interactiva: ${phrases.length} frases del manifiesto ${cfg.manifest}.`);
+    }
   } else if (cfg.phrasesFile) {
     const texts = loadPhraseList(cfg.phrasesFile);
     phrases = detectPhrasesByVad(sources.get(anyRate)!, anyRate, texts, { thresholdDb: cfg.vadThresholdDb });

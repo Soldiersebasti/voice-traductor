@@ -14,7 +14,7 @@ export function renderSummary(m: Metrics, o: { fatal?: string | null } = {}): st
   if (o.fatal) lines.push(`> **Error fatal durante la corrida:** ${o.fatal}`, '');
 
   lines.push(`## Criterio de latencia (umbral ${fmtSec(T, 1)})`, '');
-  lines.push(`- Retraso fin de frase (heurístico): **${m.latency.heuristic}** (mediana ${fmtSec(m.phraseEndLag.medianMs)}, p90 ${fmtSec(m.phraseEndLag.p90Ms)}).`);
+  lines.push(`- Retraso fin de frase (heurístico): **${m.latency.heuristic}** (mediana ${fmtSec(m.phraseEndLag.medianMs)}, p90 ${fmtSec(m.phraseEndLag.p90Ms)}, ${m.phraseEndLag.anchors} anclas${m.phraseEndLag.anchors < 5 ? '; con menos de 5 pausas claras esta cifra no decide, usar judge' : ''}).`);
   if (m.phrases) lines.push(`- Frases interactivas: **${m.latency.phrases}** (${m.phrases.passed} de ${m.phrases.total} dentro del umbral).`);
   lines.push('- Retraso percibido frase a frase: ver `juez.md` después de correr `judge`.');
   lines.push(`- El sistema en vivo suma entre 0,4 y 0,7 s por la distribución y el reproductor del celular. Para cumplir ${fmtSec(T, 1)} en la iglesia, aquí conviene quedar por debajo de ${fmtSec(T - 500, 1)}.`, '');
@@ -40,6 +40,19 @@ export function renderSummary(m: Metrics, o: { fatal?: string | null } = {}): st
     }
     lines.push('');
   }
+
+  const c = m.continuity;
+  lines.push('## Continuidad (¿interpreta mientras el pastor sigue hablando?)', '');
+  lines.push(`- Simultaneidad: ${c.overlapShare === null ? '-' : Math.round(c.overlapShare * 100) + '%'} del habla traducida suena mientras la fuente también habla (cerca de 0% sería traducción consecutiva; un intérprete humano está muy por encima de 50%).`);
+  lines.push(`- Tramos de habla continua de ≥ ${fmtSec(c.minRunMs, 0)} sin pausas: ${c.longRuns.length}.`);
+  if (c.longRuns.length) {
+    lines.push('', '| Tramo | Dura | Primer audio traducido tras el inicio | Cobertura | Mayor hueco de salida |', '|---|---|---|---|---|');
+    for (const r of c.longRuns) lines.push(`| ${fmtClock(r.startMs)} a ${fmtClock(r.endMs)} | ${fmtSec(r.durationMs, 0)} | ${fmtSec(r.firstOutputOffsetMs)} | ${Math.round(r.coverage * 100)}% | ${fmtSec(r.maxOutputGapMs, 1)} |`);
+    lines.push('');
+  }
+  lines.push(`- Silencios de salida ≥ 3 s con la fuente hablando: ${c.silences.length}.`);
+  for (const s of c.silences.slice(0, 20)) lines.push(`  - ${fmtClock(s.startMs)} a ${fmtClock(s.endMs)} (${fmtSec(s.durationMs, 1)}; la fuente habló ${fmtSec(s.sourceSpeechMs, 1)}).`);
+  lines.push('');
 
   lines.push('## Deriva (¿el retraso crece con el tiempo?)', '');
   lines.push(`- Pendiente: ${m.drift.slopeSecPer10Min === null ? '-' : m.drift.slopeSecPer10Min.toFixed(2) + ' s cada 10 min'}.`);

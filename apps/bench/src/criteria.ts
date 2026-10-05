@@ -2,8 +2,8 @@
 export type Verdict = 'cumple' | 'al límite' | 'no cumple' | 'sin datos';
 
 /** Retraso por frase: la mediana debe estar bajo el umbral y el p90 no muy por encima. */
-export function verdictFromLag(medianMs: number | null, p90Ms: number | null, thresholdMs: number): Verdict {
-  if (medianMs === null) return 'sin datos';
+export function verdictFromLag(medianMs: number | null, p90Ms: number | null, thresholdMs: number, anchors?: number): Verdict {
+  if (medianMs === null || (anchors !== undefined && anchors < 5)) return 'sin datos';
   if (medianMs > thresholdMs) return 'no cumple';
   if (p90Ms !== null && p90Ms > thresholdMs * 1.5) return 'al límite';
   return 'cumple';

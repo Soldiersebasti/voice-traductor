@@ -99,6 +99,57 @@ escuchada". El modelo del juez se configura con `JUDGE_MODEL` o `--model`.
 El juez es un apoyo para cubrir la prédica completa. La decisión la toman los
 evaluadores humanos.
 
+## Validación de interpretación continua con OpenAI
+
+Pregunta a responder: **¿puede gpt-realtime-translate sostener una
+interpretación simultánea real, correcta y estable durante una predicación
+continua, quedando idealmente 2 a 3 segundos detrás del pastor?**
+
+Qué hace y qué no hace el banco en esta prueba:
+
+- Envía el audio al motor de forma continua, en fragmentos de 100 ms, exactamente
+  al ritmo real, incluido el silencio entre palabras. No espera pausas, no
+  agrupa frases ni corta nada.
+- Reproduce la salida tal como llega. No retiene audio para "sincronizar" ni
+  descarta nada para "alcanzar". La única espera artificial es al final del
+  archivo, para dejar que el modelo termine la última frase.
+- El umbral de 3 s solo se usa para el veredicto. No hay ninguna regla que
+  fuerce al modelo a cortar frases.
+
+Material: una prédica real densa, de 10 a 15 minutos, sin pausas largas, y
+después la completa de 60 minutos. Como control repetible existe
+`docs/lectura-continua.txt`, un texto de prédica leído con voz sintética sin
+pausas artificiales, que además entrega los tiempos exactos de cada frase sin
+pasar por whisper.
+
+```bash
+# Prédica real (el juez necesita la transcripción de referencia del original)
+npm run bench -- run --engine openai --input samples/sermon1-15min.wav --label continua-real --mp3
+npm run bench -- transcribe --input samples/sermon1-15min.wav --language es
+npm run bench -- judge --run runs/continua-real-openai --reference samples/sermon1-15min.referencia.json
+
+# Lectura continua sintética (tiempos exactos; no necesita transcribe)
+npm run bench -- phrases --text docs/lectura-continua.txt --out samples/continua.wav
+npm run bench -- run --engine openai --input samples/continua.wav --label continua
+npm run bench -- judge --run runs/continua-openai --manifest samples/continua.manifest.json
+```
+
+Cómo responde el banco a cada pregunta:
+
+| Pregunta | Dónde mirar | Qué esperar de una interpretación simultánea |
+|---|---|---|
+| ¿Empieza a traducir mientras el pastor sigue hablando? | `resumen.md` → Continuidad → *Simultaneidad* (% del habla traducida que suena mientras la fuente habla) y `juez.md` → *frases oídas antes de que el pastor terminara* | Simultaneidad muy por encima del 50 %; una traducción consecutiva daría cerca de 0 %. En tramos largos sin pausa, el primer audio traducido debe llegar en pocos segundos, no al final del tramo. |
+| ¿Cuánto retraso percibe el oyente durante minutos continuos? | `juez.md` → *Retraso percibido*: inicio→inicio y fin→fin, mediana y p90; `retraso_percibido.svg` y `retraso_continuo.csv` | Mediana entre 2 y 3 s; p90 por debajo de 4,5 s; menos del 10 % del tiempo de escucha por encima de 3 s. |
+| ¿Se mantiene estable o se acumula? | `juez.md` → *Deriva* (pendiente y mediana por ventanas de 5 min); `resumen.md` → Deriva; la línea naranja de la gráfica | Pendiente cercana a 0 s cada 10 min; las ventanas no deben subir de forma sostenida. Si el atraso acumulado sube y baja, el modelo se está saltando contenido para alcanzar. |
+| ¿Hay saltos, silencios u omisiones? | `juez.md` → *Saltos* y *Original sin traducir*; `resumen.md` → Continuidad → *silencios ≥ 3 s* y *mayor hueco* en tramos largos | Cero silencios de 3 s con el pastor hablando; cobertura de los tramos largos cerca del 100 %; omisiones solo de muletillas. |
+| ¿La calidad se mantiene cuando va rápido? | `juez.md` → *Calidad según el retraso de llegada* y frases con puntaje 1 o 2 | Puntaje medio ≥ 4 en todas las franjas de retraso, sin caída en la de ≤ 2 s. Un modelo que acelera recortando se nota como fragmentos y omisiones. |
+
+Lectura de la gráfica `retraso_percibido.svg`: la línea azul es el retraso
+medido al empezar y al terminar de oír cada frase; la línea naranja es el
+atraso acumulado segundo a segundo, que sube mientras el oyente espera y baja
+cuando la traducción avanza; la línea punteada es el umbral. Los puntos grandes
+son frases por encima del umbral.
+
 ## Latencia como criterio de aprobación
 
 El umbral del MVP es **3 segundos** de retraso percibido por el oyente. Una
@@ -187,7 +238,9 @@ controla con el tamaño del segmento.
 | `eventos.jsonl` | Registro completo: cada fragmento de audio, cada texto, cada mensaje del protocolo. Para depurar. |
 | `corrida.json` | Configuración con la que se corrió. |
 | `juez.md` / `juez.json` | Resultado del juez automático, si se corrió: calidad y retraso percibido. |
-| `retraso_percibido.csv` | Curva de retraso percibido frase a frase (segundo de escucha, retraso), para graficar. |
+| `retraso_percibido.csv` | Retraso percibido frase a frase (segundo de escucha, retraso). |
+| `retraso_continuo.csv` | Atraso acumulado segundo a segundo. |
+| `retraso_percibido.svg` | Gráfica de las dos curvas con el umbral. Se abre en el navegador. |
 
 ## Cómo leer las métricas
 

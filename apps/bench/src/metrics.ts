@@ -67,6 +67,16 @@ export interface LagStats {
   samples: LagSample[];
 }
 
+export interface ContinuityMetrics {
+  /** Fracción del habla traducida que suena mientras la fuente también está hablando. ~0 = consecutiva, alta = simultánea. */
+  overlapShare: number | null;
+  /** Tramos de habla continua de la fuente (sin pausas ≥ 0,7 s) de al menos `minRunMs`. */
+  longRuns: Array<{ startMs: number; endMs: number; durationMs: number; firstOutputOffsetMs: number | null; coverage: number; maxOutputGapMs: number }>;
+  /** Silencios de salida ≥ 3 s mientras la fuente hablaba, descontado el retraso normal. */
+  silences: Array<{ startMs: number; endMs: number; durationMs: number; sourceSpeechMs: number }>;
+  minRunMs: number;
+}
+
 export interface Metrics {
   engine: string;
   label: string;
@@ -89,6 +99,7 @@ export interface Metrics {
   /** Cuánto se acumuló audio en la cola del reproductor (el modelo emitió más rápido que tiempo real). */
   maxQueueMs: number;
   stalls: Array<{ startMs: number; endMs: number; durationMs: number; sourceSpeechMs: number }>;
+  continuity: ContinuityMetrics;
   stability: {
     reconnects: number;
     rotations: number;
@@ -116,8 +127,11 @@ export function computeMetrics(inp: MetricsInput): Metrics {
 
   const phraseEnds = src.filter((s, i) => i === src.length - 1 || src[i + 1].start - s.end >= PAUSE_MS).map((s) => s.end);
   const phraseStarts = src.filter((s, i) => i === 0 || s.start - src[i - 1].end >= PAUSE_MS).map((s) => s.start);
-  const endLag = matchMonotonic(phraseEnds, out.map((s) => s.end));
-  const startLag = matchMonotonic(phraseStarts, out.map((s) => s.start));
+  // Retraso típico estimado con TODOS los segmentos de habla (no solo los límites de frase):
+  // es robusto incluso cuando casi no hay pausas, como en una prédica continua.
+  const typicalLag = estimateTypicalLag(src.map((s) => s.end), out.map((s) => s.end)) ?? estimateTypicalLag(src.map((s) => s.start), out.map((s) => s.start));
+  const endLag = matchMonotonic(phraseEnds, out.map((s) => s.end), typicalLag);
+  const startLag = matchMonotonic(phraseStarts, out.map((s) => s.start), typicalLag);
 
   const firstAudio = src.length
     ? {
@@ -131,8 +145,9 @@ export function computeMetrics(inp: MetricsInput): Metrics {
   const firstTarget = inp.transcripts.find((t) => t.channel === 'target' && t.text.trim().length > 0);
   const firstCaptionMs = firstTarget && src.length ? firstTarget.t - src[0].start : null;
 
-  const medLag = endLag.medianMs ?? startLag.medianMs ?? 2000;
+  const medLag = (endLag.anchors >= 5 ? endLag.medianMs : null) ?? typicalLag ?? endLag.medianMs ?? startLag.medianMs ?? 2000;
   const stalls = findStalls(src, out, medLag, inp.sourceEndMs);
+  const continuity = continuityStats(src, out, medLag, inp.sourceEndMs);
 
   let maxQueueMs = 0;
   for (const c of inp.chunks) maxQueueMs = Math.max(maxQueueMs, c.playStart - c.t);
@@ -168,6 +183,7 @@ export function computeMetrics(inp: MetricsInput): Metrics {
     drift: driftStats(endLag.samples, inp.sourceEndMs),
     maxQueueMs,
     stalls,
+    continuity,
     stability: {
       reconnects: count((s) => s.code === 'session.reconnected' || s.code === 'session.resumed'),
       rotations: count((s) => s.code === 'session.rotated'),
@@ -182,7 +198,7 @@ export function computeMetrics(inp: MetricsInput): Metrics {
       sourceChars: sourceDeltas.reduce((a, t) => a + t.text.length, 0),
       targetDeltas: targetDeltas.length,
     },
-    latency: { thresholdMs, heuristic: verdictFromLag(endLag.medianMs, endLag.p90Ms, thresholdMs), phrases: verdictFromPassRate(phrases?.passRate ?? null) },
+    latency: { thresholdMs, heuristic: verdictFromLag(endLag.medianMs, endLag.p90Ms, thresholdMs, endLag.anchors), phrases: verdictFromPassRate(phrases?.passRate ?? null) },
     phrases,
     vad: { thresholdDb: inp.vadThresholdDb ?? null, pauseMs: PAUSE_MS, minLagMs: MIN_LAG_MS, maxLagMs: MAX_LAG_MS },
   };
@@ -204,9 +220,9 @@ export function computeMetrics(inp: MetricsInput): Metrics {
  * Sigue siendo una heurística basada en pausas; el juez automático da el
  * emparejamiento exacto frase a frase.
  */
-export function matchMonotonic(sourceTimes: number[], outputTimes: number[]): LagStats {
+export function matchMonotonic(sourceTimes: number[], outputTimes: number[], typicalLag?: number | null): LagStats {
   const samples: LagSample[] = [];
-  const typical = estimateTypicalLag(sourceTimes, outputTimes);
+  const typical = typicalLag ?? estimateTypicalLag(sourceTimes, outputTimes);
   if (typical !== null) {
     let L = typical;
     const recent: number[] = [];
@@ -249,8 +265,8 @@ export function matchMonotonic(sourceTimes: number[], outputTimes: number[]): La
   };
 }
 
-/** Moda (en cajas de 250 ms) de las diferencias plausibles salida − fuente. */
-function estimateTypicalLag(sourceTimes: number[], outputTimes: number[]): number | null {
+/** Moda (en cajas de 250 ms) de las diferencias plausibles salida − fuente. Con empate gana la caja más poblada en su vecindad. */
+export function estimateTypicalLag(sourceTimes: number[], outputTimes: number[]): number | null {
   const bin = 250;
   const hist = new Map<number, number>();
   let j = 0;
@@ -262,10 +278,12 @@ function estimateTypicalLag(sourceTimes: number[], outputTimes: number[]): numbe
     }
   }
   let bestIdx = -1;
-  let bestCount = 0;
+  let bestScore = 0;
   for (const [idx, count] of [...hist.entries()].sort((a, b) => a[0] - b[0])) {
-    if (count > bestCount) {
-      bestCount = count;
+    // Suavizado: la caja más sus vecinas, para que un empate lo decida la concentración y no el azar.
+    const score = count * 2 + (hist.get(idx - 1) ?? 0) + (hist.get(idx + 1) ?? 0);
+    if (score > bestScore) {
+      bestScore = score;
       bestIdx = idx;
     }
   }
@@ -313,4 +331,57 @@ function findStalls(src: Segment[], out: Segment[], lagMs: number, endMs: number
     if (speech >= 3000) stalls.push({ startMs: a, endMs: b, durationMs: b - a, sourceSpeechMs: speech });
   }
   return stalls;
+}
+
+const MIN_RUN_MS = 15_000;
+
+/** Simultaneidad y cobertura en tramos largos de habla continua. */
+export function continuityStats(src: Segment[], out: Segment[], lagMs: number, endMs: number): ContinuityMetrics {
+  const outTotal = totalMs(out);
+  const overlap = out.reduce((a, o) => a + overlapMs(src, o.start, o.end), 0);
+  // Tramos continuos: segmentos de la fuente separados por menos de PAUSE_MS.
+  const runs: Segment[] = [];
+  for (const s of src) {
+    const last = runs[runs.length - 1];
+    if (last && s.start - last.end < PAUSE_MS) last.end = s.end;
+    else runs.push({ start: s.start, end: s.end });
+  }
+  const longRuns = runs
+    .filter((r) => r.end - r.start >= MIN_RUN_MS)
+    .map((r) => {
+      const winStart = r.start + lagMs;
+      const winEnd = r.end + lagMs;
+      const inWin = out.filter((o) => o.end > winStart && o.start < winEnd);
+      const first = out.find((o) => o.end > r.start);
+      let maxGap = 0;
+      let cursor = winStart;
+      for (const o of inWin) {
+        maxGap = Math.max(maxGap, Math.max(0, o.start - cursor));
+        cursor = Math.max(cursor, o.end);
+      }
+      maxGap = Math.max(maxGap, Math.max(0, winEnd - cursor));
+      const covered = inWin.reduce((a, o) => a + Math.max(0, Math.min(o.end, winEnd) - Math.max(o.start, winStart)), 0);
+      return {
+        startMs: r.start,
+        endMs: r.end,
+        durationMs: r.end - r.start,
+        firstOutputOffsetMs: first ? Math.max(0, first.start - r.start) : null,
+        coverage: Math.min(1, covered / (r.end - r.start)),
+        maxOutputGapMs: maxGap,
+      };
+    });
+  const silences: ContinuityMetrics['silences'] = [];
+  let prevEnd = 0;
+  const gaps: Array<[number, number]> = [];
+  for (const o of out) {
+    gaps.push([prevEnd, o.start]);
+    prevEnd = o.end;
+  }
+  gaps.push([prevEnd, endMs + lagMs]);
+  for (const [a, b] of gaps) {
+    if (b - a < 3000) continue;
+    const speech = overlapMs(src, a - lagMs, b - lagMs);
+    if (speech >= 2000) silences.push({ startMs: a, endMs: b, durationMs: b - a, sourceSpeechMs: speech });
+  }
+  return { overlapShare: outTotal > 0 ? overlap / outTotal : null, longRuns, silences, minRunMs: MIN_RUN_MS };
 }

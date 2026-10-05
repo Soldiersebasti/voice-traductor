@@ -53,6 +53,15 @@ export function renderReport(runs: Loaded[]): string {
   l.push(row('Juez: percibido fin → fin, p90', (r) => fmtSec(r.judge?.perceived?.lagEnd.p90Ms)));
   l.push(row('Juez: tiempo de escucha sobre el umbral', (r) => pct(r.judge?.perceived?.shareAboveThreshold)));
   l.push(row('Juez: tramo más largo sobre el umbral', (r) => fmtSec(r.judge?.perceived?.longestAboveMs, 1)));
+  l.push(row('Continuidad: habla traducida mientras la fuente habla', (r) => pct(r.metrics.continuity?.overlapShare)));
+  l.push(row('Continuidad: tramos largos sin pausa', (r) => String(r.metrics.continuity?.longRuns.length ?? '-')));
+  l.push(row('Continuidad: cobertura mínima en tramos largos', (r) => (r.metrics.continuity?.longRuns.length ? pct(Math.min(...r.metrics.continuity.longRuns.map((x) => x.coverage))) : '-')));
+  l.push(row('Continuidad: mayor hueco de salida en tramos largos', (r) => (r.metrics.continuity?.longRuns.length ? fmtSec(Math.max(...r.metrics.continuity.longRuns.map((x) => x.maxOutputGapMs)), 1) : '-')));
+  l.push(row('Continuidad: silencios ≥ 3 s con la fuente hablando', (r) => String(r.metrics.continuity?.silences.length ?? '-')));
+  l.push(row('Juez: frases oídas antes de que el pastor terminara', (r) => pct(r.judge?.perceived?.overlapShare)));
+  l.push(row('Juez: deriva del retraso (s cada 10 min)', (r) => num(r.judge?.perceived?.drift?.slopeSecPer10Min)));
+  l.push(row('Juez: saltos (caídas bruscas del retraso)', (r) => String(r.judge?.perceived?.jumps?.length ?? '-')));
+  l.push(row('Juez: calidad media con retraso ≤ 3 s / > 3 s', (r) => (r.judge?.perceived?.qualityByLag ? `${num(r.judge.perceived.qualityByLag.find((b) => b.label === '≤ 3 s')?.meanScore)} / ${num(r.judge.perceived.qualityByLag.find((b) => b.label === '> 3 s')?.meanScore)}` : '-')));
   l.push(row('Relación habla traducción/original', (r) => num(r.metrics.speechRatio)));
   l.push(row('Atascos (silencio > 5 s con fuente hablando)', (r) => String(r.metrics.stalls.length)));
   l.push(row('Reconexiones / rotaciones', (r) => `${r.metrics.stability.reconnects} / ${r.metrics.stability.rotations}`));

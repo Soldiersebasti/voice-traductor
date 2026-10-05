@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { ENGINE_NAMES, isEngineName } from '@voice-traductor/engines';
@@ -8,7 +8,7 @@ import { judgeRun } from './judge.js';
 import { loadRun, renderReport } from './report.js';
 import { runBench } from './run.js';
 import { writeSynthWav } from './synth.js';
-import { loadPhraseList } from './phrases.js';
+import { loadManifest, loadPhraseList, referenceFromManifest, splitSentences } from './phrases.js';
 import { loadReference, transcribeReference } from './transcribe.js';
 import { manifestPathFor, synthesizePhraseFile } from './tts.js';
 import { fmtClock, fmtSec, loadDotEnv } from './util.js';
@@ -49,6 +49,8 @@ prepare    --input <archivo> --out <archivo.wav> [--rate 24000] [--start-sec n] 
 transcribe --input <archivo> [--language es] [--out <referencia.json>]
 judge      --run <carpeta de corrida> --reference <referencia.json> [--model gpt-5] [--target en] [--max-lag-sec 3] [--no-perceived]
 phrases    --phrases docs/frases-interactivas.txt --out samples/interactivas.wav [--gap-sec 6] [--voice onyx] [--tts-model gpt-4o-mini-tts]
+           --text docs/lectura-continua.txt --out samples/continua.wav [--gap-sec 0.3]   lectura continua: el texto se parte en frases y se lee seguido
+judge      también acepta --manifest <archivo.json> en lugar de --reference (tiempos exactos de un audio generado con phrases)
 report     <carpeta1> <carpeta2> ... [--out runs/reporte.md]
 
 Variables de entorno (.env): OPENAI_API_KEY, GEMINI_API_KEY, JUDGE_MODEL
@@ -87,6 +89,7 @@ async function main(argv: string[]): Promise<void> {
       voice: { type: 'string' },
       'tts-model': { type: 'string' },
       'no-perceived': { type: 'boolean', default: false },
+      text: { type: 'string' },
       help: { type: 'boolean', default: false },
     },
   });
@@ -175,26 +178,33 @@ async function main(argv: string[]): Promise<void> {
       return;
     }
     case 'judge': {
-      if (!values.run || !values.reference) throw new Error('judge necesita --run y --reference');
+      if (!values.run || (!values.reference && !values.manifest)) throw new Error('judge necesita --run y además --reference o --manifest');
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) throw new Error('Falta OPENAI_API_KEY en .env');
       const model = values.model ?? process.env.JUDGE_MODEL ?? 'gpt-5';
-      const res = await judgeRun({ runDir: values.run, reference: loadReference(values.reference), apiKey, model, targetLanguage: values.target, thresholdMs: values['max-lag-sec'] ? Number(values['max-lag-sec']) * 1000 : undefined, perceived: !values['no-perceived'], log });
+      const reference = values.reference ? loadReference(values.reference) : referenceFromManifest(loadManifest(values.manifest!), values.language ?? 'es');
+      const res = await judgeRun({ runDir: values.run, reference, apiKey, model, targetLanguage: values.target, thresholdMs: values['max-lag-sec'] ? Number(values['max-lag-sec']) * 1000 : undefined, perceived: !values['no-perceived'], log });
       const p = res.perceived;
       console.log(`Juez: puntaje medio ${res.meanScore?.toFixed(2) ?? '-'} de 5 en ${res.scored} frases; ${res.critical.length} frases críticas; ${res.omittedSource.length} segmentos sin traducir.`);
-      console.log(`Retraso percibido: ${p.verdict} | inicio→inicio mediana ${fmtSec(p.lagStart.medianMs)} p90 ${fmtSec(p.lagStart.p90Ms)} | fin→fin mediana ${fmtSec(p.lagEnd.medianMs)} p90 ${fmtSec(p.lagEnd.p90Ms)} | ${p.shareAboveThreshold === null ? '-' : Math.round(p.shareAboveThreshold * 100) + '%'} del tiempo de escucha sobre ${fmtSec(p.thresholdMs, 1)} | tramo más largo ${fmtSec(p.longestAboveMs, 1)}. Detalle en ${join(values.run, 'juez.md')}`);
+      console.log(`Retraso percibido: ${p.verdict} | inicio→inicio mediana ${fmtSec(p.lagStart.medianMs)} p90 ${fmtSec(p.lagStart.p90Ms)} | fin→fin mediana ${fmtSec(p.lagEnd.medianMs)} p90 ${fmtSec(p.lagEnd.p90Ms)} | ${p.shareAboveThreshold === null ? '-' : Math.round(p.shareAboveThreshold * 100) + '%'} del tiempo de escucha sobre ${fmtSec(p.thresholdMs, 1)} | tramo más largo ${fmtSec(p.longestAboveMs, 1)}.`);
+      console.log(`Continuidad: ${p.overlapShare === null ? '-' : Math.round(p.overlapShare * 100) + '%'} de las frases se empezaron a oír antes de que el pastor terminara | deriva ${p.drift.slopeSecPer10Min === null ? '-' : p.drift.slopeSecPer10Min.toFixed(2) + ' s/10 min'} | saltos ${p.jumps.length} | omisiones ${res.omittedSource.length}. Detalle en ${join(values.run, 'juez.md')} y gráfica en ${join(values.run, 'retraso_percibido.svg')}`);
       return;
     }
     case 'phrases': {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) throw new Error('Falta OPENAI_API_KEY en .env');
-      const phrasesPath = values.phrases ?? 'docs/frases-interactivas.txt';
-      const out = values.out ?? 'samples/interactivas.wav';
+      const continuous = Boolean(values.text);
+      const phrasesList = continuous ? splitSentences(readFileSync(values.text!, 'utf8')) : loadPhraseList(values.phrases ?? 'docs/frases-interactivas.txt');
+      const out = values.out ?? (continuous ? 'samples/continua.wav' : 'samples/interactivas.wav');
       mkdirSync(dirname(out), { recursive: true });
-      const manifest = await synthesizePhraseFile({ phrases: loadPhraseList(phrasesPath), out, apiKey, gapMs: values['gap-sec'] ? Number(values['gap-sec']) * 1000 : undefined, voice: values.voice, model: values['tts-model'], log });
+      const gapMs = values['gap-sec'] ? Number(values['gap-sec']) * 1000 : continuous ? 300 : undefined;
+      const manifest = await synthesizePhraseFile({ phrases: phrasesList, out, apiKey, gapMs, leadMs: continuous ? 1000 : undefined, voice: values.voice, model: values['tts-model'], mode: continuous ? 'continuo' : 'aislado', log });
       const last = manifest.phrases[manifest.phrases.length - 1];
-      console.log(`Escrito ${out} (${manifest.phrases.length} frases, ${fmtClock((last?.endMs ?? 0) + manifest.gapMs)}) y ${manifestPathFor(out)}.`);
-      console.log(`Siguiente: npm run bench -- run --engine openai,gemini --input ${out} --manifest ${manifestPathFor(out)} --label interactivas`);
+      console.log(`Escrito ${out} (${manifest.phrases.length} frases, ${fmtClock((last?.endMs ?? 0) + manifest.gapMs)}, modo ${manifest.mode}) y ${manifestPathFor(out)}.`);
+      if (continuous) {
+        console.log(`Siguiente: npm run bench -- run --engine openai --input ${out} --label continua`);
+        console.log(`Después:   npm run bench -- judge --run runs/continua-openai --manifest ${manifestPathFor(out)}`);
+      } else console.log(`Siguiente: npm run bench -- run --engine openai,gemini --input ${out} --manifest ${manifestPathFor(out)} --label interactivas`);
       return;
     }
     case 'report': {

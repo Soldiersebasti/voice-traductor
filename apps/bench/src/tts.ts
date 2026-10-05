@@ -19,6 +19,7 @@ export interface SynthesizeOptions {
   voice?: string;
   model?: string;
   instructions?: string;
+  mode?: 'aislado' | 'continuo';
   log?: (line: string) => void;
 }
 
@@ -50,7 +51,7 @@ export async function synthesizePhraseFile(o: SynthesizeOptions): Promise<Phrase
     off += p.length;
   }
   writeWav(o.out, [pcm], rate);
-  const manifest: PhraseManifest = { source: o.out, createdAt: new Date().toISOString(), gapMs, phrases };
+  const manifest: PhraseManifest = { source: o.out, createdAt: new Date().toISOString(), gapMs, mode: o.mode ?? 'aislado', phrases };
   writeFileSync(manifestPathFor(o.out), JSON.stringify(manifest, null, 2));
   return manifest;
 }
