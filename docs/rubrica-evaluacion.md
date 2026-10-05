@@ -31,6 +31,12 @@ Escucha con audífonos. Puedes pausar y repetir.
 - 2: Cansa escucharla; pausas raras, velocidad irregular.
 - 1: Difícil de seguir.
 
+**Voz.** Dos preguntas aparte de la naturalidad:
+
+- ¿La voz en inglés "suena al pastor"? Sí, algo, no.
+- ¿La voz cambió en algún momento de forma que distrajera, por ejemplo al
+  cambiar quien hablaba o después de una pausa larga? Anota el minuto.
+
 **Retraso.** ¿Cuánto molesta la distancia entre el pastor y la traducción?
 
 - 5: No molesta; se siente en vivo.

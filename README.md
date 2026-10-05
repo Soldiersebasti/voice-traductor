@@ -146,5 +146,5 @@ Estructura:
 
 - `packages/engines`: interfaz común de motor y adaptadores (`openai`, `gemini`, `mock`). Es lo que después usará el trabajador en vivo.
 - `apps/bench`: el banco de pruebas (`run`, `prepare`, `transcribe`, `judge`, `report`).
-- `docs/`: guía del banco, rúbrica para evaluadores y plantilla de evaluación.
+- `docs/`: guía del banco, rúbrica para evaluadores, plantilla de evaluación y análisis de voz y referencias de mercado.
 - `samples/`: material de prueba (ignorado por git). `runs/`: resultados (ignorado por git).
