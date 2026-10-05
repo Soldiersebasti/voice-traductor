@@ -1,0 +1,10 @@
+{
+  "name": "@voice-traductor/bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Banco de pruebas: reproduce sermones grabados contra cada motor y mide calidad, retraso y estabilidad",
+  "dependencies": {
+    "@voice-traductor/engines": "*"
+  }
+}

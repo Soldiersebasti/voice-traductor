@@ -116,3 +116,32 @@ Cloud Code debe investigar y proponer la mejor forma de conseguir esta experienc
 La prioridad de esta primera etapa es sencilla:
 
 **Demostrar que podemos escuchar una predicación traducida por IA, en vivo, con buena calidad y con un retraso suficientemente bajo para que la experiencia sea útil dentro de una iglesia.**
+
+---
+
+## Estado del proyecto
+
+**Etapa actual: validar el núcleo.** Antes de construir producto se está
+comparando, con material real de la iglesia, cuál motor de traducción voz a voz
+ofrece la mejor experiencia para una predicación en vivo:
+
+- OpenAI `gpt-realtime-translate`
+- Google `gemini-3.5-live-translate-preview`
+
+Para eso existe un banco de pruebas que reproduce sermones grabados en tiempo
+real contra los dos motores a la vez y mide calidad, naturalidad, retraso y
+estabilidad. Ver [`docs/banco-de-pruebas.md`](docs/banco-de-pruebas.md).
+
+```bash
+npm install
+npm test
+npm run bench -- help
+npm run bench -- run --engine openai,gemini --input samples/sermon1.wav --label sermon1 --mp3
+```
+
+Estructura:
+
+- `packages/engines`: interfaz común de motor y adaptadores (`openai`, `gemini`, `mock`). Es lo que después usará el trabajador en vivo.
+- `apps/bench`: el banco de pruebas (`run`, `prepare`, `transcribe`, `judge`, `report`).
+- `docs/`: guía del banco, rúbrica para evaluadores y plantilla de evaluación.
+- `samples/`: material de prueba (ignorado por git). `runs/`: resultados (ignorado por git).

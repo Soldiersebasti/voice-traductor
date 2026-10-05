@@ -1,0 +1,16 @@
+{
+  "name": "@voice-traductor/engines",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Interfaz común y adaptadores de motores de traducción de voz en tiempo real",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

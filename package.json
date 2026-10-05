@@ -1,0 +1,25 @@
+{
+  "name": "voice-traductor",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Traducción en vivo para iglesias. Banco de pruebas del núcleo del MVP.",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "bench": "tsx apps/bench/src/cli.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test \"packages/**/src/**/*.test.ts\" \"apps/**/src/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
