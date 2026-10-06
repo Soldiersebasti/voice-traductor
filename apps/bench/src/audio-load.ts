@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { extname } from 'node:path';
 import { promisify } from 'node:util';
 import { parseWav, readWav, resampleLinear, toMono } from '@voice-traductor/engines';
@@ -57,15 +57,41 @@ export async function ffmpegAvailable(): Promise<boolean> {
 }
 
 /** Convierte un archivo a WAV PCM16 mono a `rate` (comando `prepare`). */
-export async function convertToWav(input: string, output: string, rate: number, o: { startMs?: number; maxMs?: number } = {}): Promise<void> {
+export async function convertToWav(input: string, output: string, rate: number, o: { startMs?: number; maxMs?: number; normalize?: boolean } = {}): Promise<void> {
   const args = ['-nostdin', '-y', '-loglevel', 'error'];
   if (o.startMs) args.push('-ss', (o.startMs / 1000).toFixed(3));
   args.push('-i', input);
   if (o.maxMs) args.push('-t', (o.maxMs / 1000).toFixed(3));
+  if (o.normalize) args.push('-af', 'loudnorm=I=-16:TP=-1.5:LRA=11');
   args.push('-ac', '1', '-ar', String(rate), '-acodec', 'pcm_s16le', output);
   await execFileP('ffmpeg', args);
 }
 
 export async function encodeMp3(input: string, output: string): Promise<void> {
   await execFileP('ffmpeg', ['-nostdin', '-y', '-loglevel', 'error', '-i', input, '-b:a', '96k', output]);
+}
+
+/** Cambia la velocidad de un PCM16 mono conservando el tono (filtro atempo de ffmpeg). */
+export function atempo(pcm: Int16Array, rate: number, factor: number): Promise<Int16Array> {
+  if (factor === 1 || pcm.length === 0) return Promise.resolve(pcm);
+  return new Promise((resolve, reject) => {
+    const child = spawn('ffmpeg', ['-nostdin', '-loglevel', 'error', '-f', 's16le', '-ar', String(rate), '-ac', '1', '-i', 'pipe:0', '-filter:a', `atempo=${factor.toFixed(3)}`, '-f', 's16le', '-ar', String(rate), '-ac', '1', 'pipe:1']);
+    const parts: Buffer[] = [];
+    let err = '';
+    child.stdout.on('data', (d: Buffer) => parts.push(d));
+    child.stderr.on('data', (d: Buffer) => (err += d.toString()));
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code !== 0) return reject(new Error(`ffmpeg atempo falló (${code}): ${err.trim()}`));
+      const buf = Buffer.concat(parts);
+      const n = buf.length >> 1;
+      const out = new Int16Array(n);
+      for (let i = 0; i < n; i++) out[i] = buf.readInt16LE(i * 2);
+      resolve(out);
+    });
+    child.stdin.on('error', () => {
+      /* ffmpeg cerró antes de leer todo */
+    });
+    child.stdin.end(Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength));
+  });
 }

@@ -127,16 +127,34 @@ export function sentencesFromDeltas(deltas: Array<{ t: number; playRef: number; 
   return out.map((s, i) => ({ ...s, heardEndMs: i + 1 < out.length ? Math.max(s.heardMs, out[i + 1].heardMs) : s.heardMs + 2000 }));
 }
 
-/** Proyección de tiempos del audio crudo (sin silencios) a la línea de tiempo del oyente. */
-export function rawToAlignedMapper(chunks: Array<{ samples: number; playStart: number }>, rate: number): (rawMs: number) => number {
+/** Entrada de audio del registro de eventos. Las corridas simuladas (`replay`) traen además el tramo del audio crudo que representan. */
+export interface ChunkEntry {
+  t: number;
+  samples: number;
+  playStart: number;
+  /** Inicio del tramo en el audio crudo (ms). Si falta, los fragmentos son consecutivos. */
+  rawStartMs?: number;
+  /** Duración del tramo en el audio crudo (ms). Si falta, igual a la duración reproducida. */
+  rawMs?: number;
+}
+
+/**
+ * Proyección de tiempos del audio crudo (sin silencios) a la línea de tiempo
+ * del oyente. Si un tramo se reprodujo acelerado o recortado, el tiempo se
+ * escala en proporción a lo que duró reproducido.
+ */
+export function rawToAlignedMapper(chunks: ChunkEntry[], rate: number): (rawMs: number) => number {
   const rawStarts: number[] = [];
-  const durs: number[] = [];
+  const rawDurs: number[] = [];
+  const playedDurs: number[] = [];
   let acc = 0;
   for (const c of chunks) {
-    const dur = (c.samples / rate) * 1000;
-    rawStarts.push(acc);
-    durs.push(dur);
-    acc += dur;
+    const played = (c.samples / rate) * 1000;
+    const raw = c.rawMs ?? played;
+    rawStarts.push(c.rawStartMs ?? acc);
+    rawDurs.push(raw);
+    playedDurs.push(played);
+    acc = (c.rawStartMs ?? acc) + raw;
   }
   return (rawMs: number) => {
     if (!chunks.length) return rawMs;
@@ -147,20 +165,23 @@ export function rawToAlignedMapper(chunks: Array<{ samples: number; playStart: n
       if (rawStarts[mid] <= rawMs) lo = mid;
       else hi = mid - 1;
     }
-    const off = Math.min(Math.max(0, rawMs - rawStarts[lo]), durs[lo]);
-    return chunks[lo].playStart + off;
+    const off = Math.min(Math.max(0, rawMs - rawStarts[lo]), rawDurs[lo]);
+    const scale = rawDurs[lo] > 0 ? playedDurs[lo] / rawDurs[lo] : 1;
+    return chunks[lo].playStart + off * scale;
   };
 }
 
-export function loadChunks(runDir: string): Array<{ samples: number; playStart: number }> {
+export function loadChunks(runDir: string): ChunkEntry[] {
   const path = join(runDir, 'eventos.jsonl');
   if (!existsSync(path)) return [];
-  const out: Array<{ samples: number; playStart: number }> = [];
+  const out: ChunkEntry[] = [];
   for (const line of readFileSync(path, 'utf8').split('\n')) {
     if (!line.includes('"audio"')) continue;
     try {
-      const ev = JSON.parse(line) as { type: string; samples?: number; playStart?: number };
-      if (ev.type === 'audio' && typeof ev.samples === 'number' && typeof ev.playStart === 'number') out.push({ samples: ev.samples, playStart: ev.playStart });
+      const ev = JSON.parse(line) as { type: string; t?: number; samples?: number; playStart?: number; rawStartMs?: number; rawMs?: number };
+      if (ev.type === 'audio' && typeof ev.samples === 'number' && typeof ev.playStart === 'number') {
+        out.push({ t: ev.t ?? ev.playStart, samples: ev.samples, playStart: ev.playStart, rawStartMs: ev.rawStartMs, rawMs: ev.rawMs });
+      }
     } catch {
       /* línea corrupta */
     }

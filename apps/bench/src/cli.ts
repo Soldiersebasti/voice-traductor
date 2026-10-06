@@ -4,7 +4,9 @@ import { basename, dirname, extname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { ENGINE_NAMES, isEngineName } from '@voice-traductor/engines';
 import { convertToWav, ffmpegAvailable } from './audio-load.js';
+import { diagnoseRun } from './diagnose.js';
 import { judgeRun } from './judge.js';
+import { replayRun } from './replay.js';
 import { loadRun, renderReport } from './report.js';
 import { runBench } from './run.js';
 import { writeSynthWav } from './synth.js';
@@ -25,6 +27,8 @@ Comandos
   judge       Juez automático: alinea y califica la traducción de una corrida contra la referencia.
   report      Tabla comparativa en markdown a partir de varias corridas.
   phrases     Genera el audio de la prueba interactiva (frases cortas con voz sintética) y su manifiesto de tiempos.
+  diagnose    Descompone el retraso de una corrida: modelo + red, cola del reproductor, exceso de duración, pausas del modelo, saltos.
+  replay      Simula la misma corrida con reproducción adaptativa (recorte de pausas y velocidad conservando el tono) sin llamar al modelo.
 
 run
   --engine <openai|gemini|mock|lista,separada,por,comas>   (obligatorio)
@@ -45,7 +49,9 @@ run
   --phrases <archivo.txt>      prueba interactiva grabada con voz propia; las frases se detectan por silencio
 
 synth      --out <archivo.wav> [--seconds 60] [--rate 16000]
-prepare    --input <archivo> --out <archivo.wav> [--rate 24000] [--start-sec n] [--max-minutes n]
+prepare    --input <archivo> --out <archivo.wav> [--rate 24000] [--start-sec n] [--max-minutes n] [--normalize]
+diagnose   --run <carpeta de corrida> [--max-lag-sec 3]          (mejor después de judge)
+replay     --run <carpeta de corrida> [--stretch 1.15] [--trigger-sec 2.5] [--no-trim] [--out <carpeta>]
 transcribe --input <archivo> [--language es] [--out <referencia.json>]
 judge      --run <carpeta de corrida> --reference <referencia.json> [--model gpt-5] [--target en] [--max-lag-sec 3] [--no-perceived]
 phrases    --phrases docs/frases-interactivas.txt --out samples/interactivas.wav [--gap-sec 6] [--voice onyx] [--tts-model gpt-4o-mini-tts]
@@ -90,6 +96,10 @@ async function main(argv: string[]): Promise<void> {
       'tts-model': { type: 'string' },
       'no-perceived': { type: 'boolean', default: false },
       text: { type: 'string' },
+      normalize: { type: 'boolean', default: false },
+      stretch: { type: 'string' },
+      'trigger-sec': { type: 'string' },
+      'no-trim': { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
   });
@@ -164,8 +174,8 @@ async function main(argv: string[]): Promise<void> {
       const rate = num(values.rate) ?? 24000;
       const out = values.out ?? join('samples', `${basename(values.input, extname(values.input))}.${rate}.wav`);
       mkdirSync(dirname(out), { recursive: true });
-      await convertToWav(values.input, out, rate, { startMs: values['start-sec'] ? Number(values['start-sec']) * 1000 : undefined, maxMs: values['max-minutes'] ? Number(values['max-minutes']) * 60_000 : undefined });
-      console.log(`Escrito ${out} (${rate} Hz, mono, PCM16).`);
+      await convertToWav(values.input, out, rate, { startMs: values['start-sec'] ? Number(values['start-sec']) * 1000 : undefined, maxMs: values['max-minutes'] ? Number(values['max-minutes']) * 60_000 : undefined, normalize: values.normalize });
+      console.log(`Escrito ${out} (${rate} Hz, mono, PCM16${values.normalize ? ', volumen normalizado' : ''}).`);
       return;
     }
     case 'transcribe': {
@@ -205,6 +215,23 @@ async function main(argv: string[]): Promise<void> {
         console.log(`Siguiente: npm run bench -- run --engine openai --input ${out} --label continua`);
         console.log(`Después:   npm run bench -- judge --run runs/continua-openai --manifest ${manifestPathFor(out)}`);
       } else console.log(`Siguiente: npm run bench -- run --engine openai,gemini --input ${out} --manifest ${manifestPathFor(out)} --label interactivas`);
+      return;
+    }
+    case 'diagnose': {
+      if (!values.run) throw new Error('diagnose necesita --run');
+      const r = diagnoseRun(values.run, { thresholdMs: values['max-lag-sec'] ? Number(values['max-lag-sec']) * 1000 : undefined });
+      const st = (x: { medianMs: number | null; p90Ms: number | null }) => `mediana ${fmtSec(x.medianMs)} p90 ${fmtSec(x.p90Ms)}`;
+      console.log(`Modelo + red (inicio dicho → llegada del primer audio): ${st(r.sentences.arrivalLag)} | cola del reproductor: ${st(r.sentences.queueLag)} | al empezar a oír: ${st(r.sentences.lagStart)} | al terminar: ${st(r.sentences.lagEnd)}`);
+      console.log(`Duración oída/dicha mediana ${r.sentences.durationRatio.medianMs === null ? '-' : (r.sentences.durationRatio.medianMs / 1000).toFixed(2)} | exceso ${fmtSec(r.sentences.excessPerMinuteMs, 1)} por minuto | entrega ${r.bursts.generationSpeed.medianMs === null ? 'sin ráfagas largas' : (r.bursts.generationSpeed.medianMs / 1000).toFixed(2) + 'x'} | pausas del modelo recortables ${fmtSec(r.modelPauses.totalMs, 1)} | saltos ${r.jumps.length} (${r.jumps.map((j) => j.cause).join(', ') || '-'})`);
+      console.log(`Detalle en ${join(values.run, 'diagnostico.md')}`);
+      return;
+    }
+    case 'replay': {
+      if (!values.run) throw new Error('replay necesita --run');
+      const r = await replayRun({ runDir: values.run, outDir: values.out, stretch: num(values.stretch), triggerMs: values['trigger-sec'] ? Number(values['trigger-sec']) * 1000 : undefined, trimSilence: !values['no-trim'], log });
+      const m = r.metrics;
+      console.log(`Simulación en ${r.dir}: escucha ${fmtClock(r.listeningMsBefore)} → ${fmtClock(r.listeningMsAfter)} | acelerado ${fmtSec(r.stretchedMs, 1)} | pausas recortadas ${fmtSec(r.trimmedMs, 1)} | retraso fin de frase mediana ${fmtSec(m.phraseEndLag.medianMs)} p90 ${fmtSec(m.phraseEndLag.p90Ms)} | retraso al final ${fmtSec(m.tailLagMs)}`);
+      console.log(`Para el retraso percibido exacto: npm run bench -- judge --run ${r.dir} --reference <referencia.json>`);
       return;
     }
     case 'report': {

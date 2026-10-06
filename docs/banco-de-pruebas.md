@@ -150,6 +150,64 @@ atraso acumulado segundo a segundo, que sube mientras el oyente espera y baja
 cuando la traducción avanza; la línea punteada es el umbral. Los puntos grandes
 son frases por encima del umbral.
 
+## Diagnóstico: de dónde viene el retraso y qué se puede recortar
+
+Cuando una corrida no cumple el umbral, antes de cambiar de motor hay que
+saber qué parte del retraso es del modelo y qué parte es nuestra. Con los
+archivos de la corrida y el resultado de `judge`:
+
+```bash
+npm run bench -- diagnose --run runs/continua-real-openai
+```
+
+Escribe `diagnostico.md` con esta descomposición, por frase oída:
+
+| Parte | Cómo se mide | Quién la causa |
+|---|---|---|
+| Modelo + red | Inicio de la frase dicha → llegada por la red del primer audio de su traducción | OpenAI (espera contexto, genera) más la ida por la red |
+| Cola del reproductor | Llegada → momento en que de verdad se empezó a oír, porque todavía sonaba la frase anterior | Nuestra reproducción, consecuencia de que la traducción dura más que el original |
+| Exceso de duración | Duración de la frase oída / frase dicha, y exceso acumulado por minuto | El idioma y la voz del modelo; se acumula hasta la siguiente pausa del pastor |
+| Pausas del modelo | Silencios de ≥ 0,25 s dentro de la propia salida | El modelo; recortables sin perder palabras |
+| Velocidad de generación | Audio producido por segundo de reloj en cada ráfaga | Si es mayor que 1x, el modelo ya tenía la frase lista: el cuello de botella es la escucha, no el modelo |
+
+Nuestro troceado de entrada (100 ms) y la apertura del WebSocket aportan menos
+de 0,2 s y se reportan aparte. El diagnóstico también explica cada **salto**
+del juez: una caída del retraso de más de 1,5 s entre dos frases, sin
+omisiones, casi siempre es la cola vaciándose en una pausa del pastor; las
+otras causas posibles son una frase oída que el juez alineó con varias del
+original, o una traducción mucho más corta que el original.
+
+### Simulación de reproducción adaptativa, sin volver a llamar al modelo
+
+```bash
+npm run bench -- replay --run runs/continua-real-openai --stretch 1.15 --trigger-sec 2.5
+npm run bench -- judge --run runs/continua-real-openai-replay-1.15x --reference samples/sermon1-15min.referencia.json
+npm run bench -- report runs/continua-real-openai runs/continua-real-openai-replay-1.15x
+```
+
+`replay` vuelve a reproducir el audio que ya llegó, con las mismas horas de
+llegada, pero con un reproductor que, cuando lleva más de `--trigger-sec` de
+audio en cola, recorta las pausas del modelo a 120 ms y reproduce un 15 % más
+rápido conservando el tono (filtro `atempo` de ffmpeg). No se pierde ninguna
+palabra ni se corta ninguna frase: solo se acorta el tiempo de escucha, que es
+lo que hace un intérprete humano cuando se queda atrás. Si el modelo llega
+tarde pero no hay cola, la simulación no cambia nada, porque no se puede
+reproducir lo que todavía no llegó. Factores de 1,1 a 1,25 son casi
+imperceptibles en voz; por encima de 1,3 se nota.
+
+Lo que sí se puede optimizar legítimamente, de más a menos impacto:
+
+1. **Reproducción adaptativa** en el oyente o en el trabajador: recorte de pausas y velocidad 1,1 a 1,25 cuando la cola supera 2 a 2,5 s. Se valida con `replay` antes de construirlo.
+2. **Parámetros del motor** que podrían cambiar el tiempo que espera antes de hablar. Se prueban con `--opts` sin tocar código y comparando con `report`:
+   - `{"openai":{"inputTranscription":false}}` quita la transcripción del original.
+   - `{"openai":{"noiseReduction":"none"}}` o `"far_field"`.
+   - `--chunk-ms 40` fragmentos de entrada más pequeños.
+   - `prepare --normalize` normaliza el volumen de la fuente; un audio bajo puede retrasar la detección de voz del modelo.
+3. **Red**: el servidor del trabajador en la región más cercana a OpenAI (este de Estados Unidos) suele quitar 50 a 150 ms de ida y vuelta.
+
+Lo que no se hace: esperar pausas para enviar, partir frases, descartar audio,
+ni pedirle al modelo que corte. Nada de eso existe en el banco ni en el plan.
+
 ## Latencia como criterio de aprobación
 
 El umbral del MVP es **3 segundos** de retraso percibido por el oyente. Una
@@ -238,6 +296,7 @@ controla con el tamaño del segmento.
 | `eventos.jsonl` | Registro completo: cada fragmento de audio, cada texto, cada mensaje del protocolo. Para depurar. |
 | `corrida.json` | Configuración con la que se corrió. |
 | `juez.md` / `juez.json` | Resultado del juez automático, si se corrió: calidad y retraso percibido. |
+| `diagnostico.md` / `diagnostico.json` | Descomposición del retraso y explicación de los saltos (`diagnose`). |
 | `retraso_percibido.csv` | Retraso percibido frase a frase (segundo de escucha, retraso). |
 | `retraso_continuo.csv` | Atraso acumulado segundo a segundo. |
 | `retraso_percibido.svg` | Gráfica de las dos curvas con el umbral. Se abre en el navegador. |

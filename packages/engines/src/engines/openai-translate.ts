@@ -136,6 +136,7 @@ export class OpenAITranslateEngine extends BaseEngine {
     return new Promise((resolve, reject) => {
       const model = this.opts.model ?? DEFAULT_MODEL;
       const url = `${this.opts.url ?? DEFAULT_URL}?model=${encodeURIComponent(model)}`;
+      const connectStart = Date.now();
       const ws = new WebSocket(url, { headers: { Authorization: `Bearer ${this.opts.apiKey}` } });
       const s: Session = { id: this.nextId++, ws, openedAt: 0, ready: false, closedByUs: false, reason };
       let settled = false;
@@ -152,7 +153,8 @@ export class OpenAITranslateEngine extends BaseEngine {
         ws.send(JSON.stringify(update));
         this.emit({ type: 'raw', direction: 'out', payload: update });
         s.ready = true;
-        this.emit({ type: 'status', code: 'session.opened', message: `Sesión OpenAI #${s.id} abierta (${reason}, modelo ${model})`, data: { id: s.id, reason, model } });
+        const connectMs = Date.now() - connectStart;
+        this.emit({ type: 'status', code: 'session.opened', message: `Sesión OpenAI #${s.id} abierta (${reason}, modelo ${model}, conexión ${connectMs} ms)`, data: { id: s.id, reason, model, connectMs } });
         settled = true;
         resolve(s);
       });

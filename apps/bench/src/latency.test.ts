@@ -45,7 +45,7 @@ test('detectPhrasesByVad encuentra las frases del guion grabado y las etiqueta e
 });
 
 test('rawToAlignedMapper proyecta tiempos del audio crudo a la línea del oyente', () => {
-  const map = rawToAlignedMapper([{ samples: 2400, playStart: 1000 }, { samples: 2400, playStart: 5000 }], 24000);
+  const map = rawToAlignedMapper([{ t: 0, samples: 2400, playStart: 1000 }, { t: 0, samples: 2400, playStart: 5000 }], 24000);
   assert.equal(map(0), 1000);
   assert.equal(map(50), 1050);
   assert.equal(map(150), 5050);
