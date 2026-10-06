@@ -127,7 +127,7 @@ ofrece la mejor experiencia para una predicación en vivo:
 
 - OpenAI `gpt-realtime-translate`
 - Google `gemini-3.5-live-translate-preview`
-- Kyutai `hibiki-zero` (abierto, local con GPU NVIDIA; ver `docs/hibiki-zero.md`)
+- Kyutai `hibiki-zero` (abierto pero con pesos no comerciales; laboratorio, GPU NVIDIA; ver `docs/hibiki-zero.md`)
 
 Para eso existe un banco de pruebas que reproduce sermones grabados en tiempo
 real contra los dos motores a la vez y mide calidad, naturalidad, retraso y
@@ -148,5 +148,5 @@ Estructura:
 - `packages/engines`: interfaz común de motor y adaptadores (`openai`, `gemini`, `hibiki`, `mock`). Es lo que después usará el trabajador en vivo.
 - `apps/bench`: el banco de pruebas (`run`, `prepare`, `transcribe`, `judge`, `report`).
 - `tools/`: puente en Python entre el banco y `hibiki-zero serve`.
-- `docs/`: guía del banco, rúbrica para evaluadores, plantilla de evaluación, análisis de voz y referencias de mercado, y estado del arte de interpretación simultánea con latencia baja.
+- `docs/`: guía del banco, rúbrica para evaluadores, plantilla de evaluación, análisis de voz y referencias de mercado, estado del arte de interpretación simultánea con latencia baja, y mapa de proveedores y alternativas para probar y comercializar.
 - `samples/`: material de prueba (ignorado por git). `runs/`: resultados (ignorado por git).

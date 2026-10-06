@@ -2,8 +2,10 @@
 
 Hibiki-Zero (Kyutai, ICML 2026) es un modelo abierto de interpretación
 simultánea voz a voz de francés, español, portugués y alemán a inglés, de 3 mil
-millones de parámetros, licencia MIT, con transferencia de voz y latencia
-optimizada por aprendizaje por refuerzo. Repositorio: https://github.com/kyutai-labs/hibiki-zero
+millones de parámetros, con transferencia de voz y latencia optimizada por
+aprendizaje por refuerzo. **Licencia: el código es MIT, pero los pesos del
+modelo están bajo CC BY-NC-SA 4.0 según su tarjeta en Hugging Face, es decir,
+no comercial.** Sirve como laboratorio y referencia, no para el producto. Repositorio: https://github.com/kyutai-labs/hibiki-zero
 
 ## Viabilidad en tu equipo, antes de instalar nada
 
