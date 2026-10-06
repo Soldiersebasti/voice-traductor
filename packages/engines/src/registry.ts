@@ -1,9 +1,10 @@
 import { GeminiTranslateEngine, type GeminiEngineOptions } from './engines/gemini-translate.js';
+import { HibikiEngine, type HibikiEngineOptions } from './engines/hibiki.js';
 import { MockEngine, type MockEngineOptions } from './engines/mock.js';
 import { OpenAITranslateEngine, type OpenAIEngineOptions } from './engines/openai-translate.js';
 import type { TranslationEngine } from './types.js';
 
-export const ENGINE_NAMES = ['openai', 'gemini', 'mock'] as const;
+export const ENGINE_NAMES = ['openai', 'gemini', 'hibiki', 'mock'] as const;
 export type EngineName = (typeof ENGINE_NAMES)[number];
 
 export interface CreateEngineOptions {
@@ -27,6 +28,15 @@ export function createEngine(name: string, o: CreateEngineOptions): TranslationE
       return new OpenAITranslateEngine({ apiKey: env.OPENAI_API_KEY ?? '', ...common, ...specific } as OpenAIEngineOptions);
     case 'gemini':
       return new GeminiTranslateEngine({ apiKey: env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY ?? '', ...common, ...specific } as GeminiEngineOptions);
+    case 'hibiki':
+      return new HibikiEngine({
+        bridgeUrl: env.HIBIKI_BRIDGE_URL,
+        upstreamUrl: env.HIBIKI_URL,
+        python: env.HIBIKI_PYTHON,
+        autostart: env.HIBIKI_AUTOSTART === '1',
+        ...common,
+        ...specific,
+      } as HibikiEngineOptions);
     case 'mock':
       return new MockEngine({ ...common, ...specific } as MockEngineOptions);
     default:

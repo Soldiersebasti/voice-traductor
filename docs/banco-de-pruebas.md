@@ -11,6 +11,7 @@ Motores incluidos:
 |---|---|---|---|---|
 | `openai` | `gpt-realtime-translate` | PCM16 24 kHz | PCM16 24 kHz | Endpoint dedicado de traducción. Sin prompt ni elección de voz: la voz imita el tono del hablante. Sesión máx. 60 min; el adaptador rota a una sesión nueva a los 50 min buscando un silencio. |
 | `gemini` | `gemini-3.5-live-translate-preview` | PCM16 16 kHz | PCM16 24 kHz | Preview pública. La conexión dura ~10 min; el servidor avisa con `goAway` y el adaptador reconecta con el handle de reanudación. Compresión de contexto activada para sesiones largas. |
+| `hibiki` | `kyutai/hibiki-zero-3b` (local, GPU NVIDIA) | PCM16 24 kHz | PCM16 24 kHz | Modelo abierto de Kyutai, solo a inglés. Se conecta a `hibiki-zero serve` a través de `tools/hibiki_bridge.py`. Requisitos, instalación y corrida base en `docs/hibiki-zero.md`. |
 | `mock` | ninguno | 16 kHz | 24 kHz | Devuelve el mismo audio con un retraso fijo. Para probar el banco sin claves. |
 
 Los adaptadores se escribieron a partir de la documentación oficial vigente
