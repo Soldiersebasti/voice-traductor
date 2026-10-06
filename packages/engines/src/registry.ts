@@ -2,9 +2,10 @@ import { GeminiTranslateEngine, type GeminiEngineOptions } from './engines/gemin
 import { HibikiEngine, type HibikiEngineOptions } from './engines/hibiki.js';
 import { MockEngine, type MockEngineOptions } from './engines/mock.js';
 import { OpenAITranslateEngine, type OpenAIEngineOptions } from './engines/openai-translate.js';
+import { QwenLiveTranslateEngine, type QwenEngineOptions } from './engines/qwen-livetranslate.js';
 import type { TranslationEngine } from './types.js';
 
-export const ENGINE_NAMES = ['openai', 'gemini', 'hibiki', 'mock'] as const;
+export const ENGINE_NAMES = ['openai', 'gemini', 'qwen', 'hibiki', 'mock'] as const;
 export type EngineName = (typeof ENGINE_NAMES)[number];
 
 export interface CreateEngineOptions {
@@ -28,6 +29,8 @@ export function createEngine(name: string, o: CreateEngineOptions): TranslationE
       return new OpenAITranslateEngine({ apiKey: env.OPENAI_API_KEY ?? '', ...common, ...specific } as OpenAIEngineOptions);
     case 'gemini':
       return new GeminiTranslateEngine({ apiKey: env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY ?? '', ...common, ...specific } as GeminiEngineOptions);
+    case 'qwen':
+      return new QwenLiveTranslateEngine({ apiKey: env.DASHSCOPE_API_KEY ?? env.QWEN_API_KEY ?? '', ...common, ...specific } as QwenEngineOptions);
     case 'hibiki':
       return new HibikiEngine({
         bridgeUrl: env.HIBIKI_BRIDGE_URL,

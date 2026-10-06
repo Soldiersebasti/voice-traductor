@@ -11,6 +11,7 @@ Motores incluidos:
 |---|---|---|---|---|
 | `openai` | `gpt-realtime-translate` | PCM16 24 kHz | PCM16 24 kHz | Endpoint dedicado de traducción. Sin prompt ni elección de voz: la voz imita el tono del hablante. Sesión máx. 60 min; el adaptador rota a una sesión nueva a los 50 min buscando un silencio. |
 | `gemini` | `gemini-3.5-live-translate-preview` | PCM16 16 kHz | PCM16 24 kHz | Preview pública. La conexión dura ~10 min; el servidor avisa con `goAway` y el adaptador reconecta con el handle de reanudación. Compresión de contexto activada para sesiones largas. |
+| `qwen` | `qwen3.8-livetranslate-flash-realtime` (Alibaba Model Studio, Singapur) | PCM16 16 kHz | PCM16 24 kHz | API Realtime por WebSocket, protocolo tipo OpenAI (`session.update`, `input_audio_buffer.append`, `response.audio.delta`). Pago por uso con cuota gratis inicial. Cierra con `session.finish`; rota a los 110 min (límite documentado 120). Cuenta, región, clave y supuestos a confirmar en `docs/qwen-livetranslate.md`. |
 | `hibiki` | `kyutai/hibiki-zero-3b` (local, GPU NVIDIA) | PCM16 24 kHz | PCM16 24 kHz | Modelo abierto de Kyutai, solo a inglés. Se conecta a `hibiki-zero serve` a través de `tools/hibiki_bridge.py`. Requisitos, instalación y corrida base en `docs/hibiki-zero.md`. |
 | `mock` | ninguno | 16 kHz | 24 kHz | Devuelve el mismo audio con un retraso fijo. Para probar el banco sin claves. |
 
@@ -27,7 +28,7 @@ diagnosticar.
 - ffmpeg instalado (`ffmpeg -version`). Se usa para leer mp3/m4a, cambiar la tasa
   de muestreo con buen filtrado, partir audio para la transcripción de
   referencia y generar mp3 de escucha.
-- Claves en `.env` (copiar `.env.example`): `OPENAI_API_KEY` y `GEMINI_API_KEY`.
+- Claves en `.env` (copiar `.env.example`): `OPENAI_API_KEY` y `GEMINI_API_KEY`; `DASHSCOPE_API_KEY` para el motor `qwen`.
 
 ```bash
 npm install

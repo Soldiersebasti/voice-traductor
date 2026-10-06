@@ -31,7 +31,7 @@ Comandos
   replay      Simula la misma corrida con reproducción adaptativa (recorte de pausas y velocidad conservando el tono) sin llamar al modelo.
 
 run
-  --engine <openai|gemini|mock|lista,separada,por,comas>   (obligatorio)
+  --engine <openai|gemini|qwen|hibiki|mock|lista,separada,por,comas>   (obligatorio)
   --input <archivo>            audio de la prédica                      (obligatorio)
   --target <idioma>            idioma de salida, por defecto en
   --source <idioma>            pista del idioma de entrada (opcional; los motores detectan solos)

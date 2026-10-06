@@ -2,6 +2,7 @@ export * from './types.js';
 export { BaseEngine } from './base.js';
 export { OpenAITranslateEngine, type OpenAIEngineOptions } from './engines/openai-translate.js';
 export { GeminiTranslateEngine, type GeminiEngineOptions } from './engines/gemini-translate.js';
+export { QwenLiveTranslateEngine, type QwenEngineOptions } from './engines/qwen-livetranslate.js';
 export { HibikiEngine, type HibikiEngineOptions } from './engines/hibiki.js';
 export { MockEngine, type MockEngineOptions } from './engines/mock.js';
 export { createEngine, isEngineName, ENGINE_NAMES, type EngineName, type CreateEngineOptions } from './registry.js';
