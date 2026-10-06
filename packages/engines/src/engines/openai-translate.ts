@@ -70,6 +70,7 @@ export class OpenAITranslateEngine extends BaseEngine {
   private pendingMs = 0;
   private droppedMs = 0;
   private timers = new Set<NodeJS.Timeout>();
+  private rttTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly opts: OpenAIEngineOptions) {
     super();
@@ -79,6 +80,18 @@ export class OpenAITranslateEngine extends BaseEngine {
   async start(): Promise<void> {
     this.active = await this.open('inicial');
     this.emit({ type: 'ready' });
+    // Ida y vuelta de red medida con ping/pong del WebSocket, cada 15 s.
+    this.rttTimer = setInterval(() => {
+      const s = this.active;
+      if (!s || s.ws.readyState !== WebSocket.OPEN) return;
+      const sent = Date.now();
+      try {
+        s.ws.ping();
+        s.ws.once('pong', () => this.emit({ type: 'status', code: 'net.rtt', message: `Ida y vuelta de red: ${Date.now() - sent} ms`, data: { rttMs: Date.now() - sent } }));
+      } catch {
+        /* conexión cerrándose */
+      }
+    }, 15_000);
   }
 
   sendAudio(pcm: Int16Array): void {
@@ -106,6 +119,7 @@ export class OpenAITranslateEngine extends BaseEngine {
 
   async stop(): Promise<void> {
     this.stopping = true;
+    if (this.rttTimer) clearInterval(this.rttTimer);
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
     for (const s of [this.active, this.standby]) if (s) this.close(s);

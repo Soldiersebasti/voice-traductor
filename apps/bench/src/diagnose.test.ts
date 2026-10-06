@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { ffmpegAvailable } from './audio-load.js';
-import { diagnoseFromData } from './diagnose.js';
+import { arrivalGapForensics, diagnoseFromData, inputTranscriptLagStat } from './diagnose.js';
 import { rawToAlignedMapper, type ChunkEntry, type JudgeItem } from './judge.js';
 import { replayRun, trimPauses } from './replay.js';
 import { runBench } from './run.js';
@@ -80,4 +80,43 @@ test('replay con alcance reduce el retraso al final de una corrida simulada', as
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('arrivalGapForensics explica un hueco con la transcripción de entrada', () => {
+  const rate = 24000;
+  const chunks = [
+    { t: 1000, playStart: 1000, samples: rate },
+    { t: 12_000, playStart: 12_000, samples: rate },
+  ];
+  const source = [{ start: 0, end: 11_000 }];
+  const events = [
+    { t: 3000, type: 'transcript', channel: 'source', text: 'hermanos ', final: false },
+    { t: 5000, type: 'transcript', channel: 'source', text: 'buenas noches ', final: false },
+    { t: 12_100, type: 'transcript', channel: 'target', text: 'Brothers, good evening.', final: false },
+  ];
+  const gaps = arrivalGapForensics({ chunks, rate, events, source, lagMs: 2000, reference: null });
+  assert.equal(gaps.length, 1);
+  assert.equal(gaps[0].durationMs, 10_000);
+  assert.equal(gaps[0].inputDeltas, 2);
+  assert.equal(gaps[0].verdict, 'el modelo recibía audio y retuvo la salida');
+  assert.match(gaps[0].outputAfter, /Brothers/);
+
+  const noInput = arrivalGapForensics({ chunks, rate, events: events.filter((e) => e.channel !== 'source'), source, lagMs: 2000, reference: null });
+  assert.equal(noInput[0].verdict, 'sin transcripción de entrada activada');
+
+  const inputElsewhere = arrivalGapForensics({ chunks, rate, events: [{ t: 500, type: 'transcript', channel: 'source', text: 'x', final: false }, ...events.filter((e) => e.channel !== 'source')], source, lagMs: 2000, reference: null });
+  assert.equal(inputElsewhere[0].verdict, 'no llegó transcripción de entrada: revisar red o envío');
+});
+
+test('inputTranscriptLagStat mide inicio de habla → primer fragmento de transcripción', () => {
+  const source = [{ start: 0, end: 3000 }, { start: 5000, end: 8000 }];
+  const events = [
+    { t: 800, type: 'transcript', channel: 'source', text: 'a', final: false },
+    { t: 1500, type: 'transcript', channel: 'source', text: 'b', final: false },
+    { t: 5900, type: 'transcript', channel: 'source', text: 'c', final: false },
+  ];
+  const s = inputTranscriptLagStat(events, source);
+  assert.ok(s);
+  assert.equal(s.n, 2);
+  assert.equal(s.medianMs, 850);
 });

@@ -1,10 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readWav, readWavHeader, toMono } from '@voice-traductor/engines';
+import { loadAudioAtRate } from './audio-load.js';
+import type { Reference } from './transcribe.js';
 import { loadChunks, type ChunkEntry, type JudgeItem, type JudgeResult } from './judge.js';
 import type { Metrics } from './metrics.js';
 import { fmtClock, fmtSec, median, percentile } from './util.js';
-import { detectSpeech } from './vad.js';
+import { detectSpeech, overlapMs, type Segment } from './vad.js';
 
 /**
  * Descompone el retraso de una corrida en sus partes, a partir de los archivos
@@ -36,9 +38,30 @@ export interface JumpExplanation {
   cause: 'pausa del pastor' | 'alineación de varias frases' | 'traducción más corta' | 'sin explicar';
 }
 
+export interface GapForensic {
+  /** Hueco en las llegadas del modelo (ms, línea de tiempo del oyente). */
+  startMs: number;
+  endMs: number;
+  durationMs: number;
+  /** Habla de la fuente durante el hueco (descontado el retraso típico). */
+  sourceSpeechMs: number;
+  sourceText: string | null;
+  /** Fragmentos de transcripción de entrada que llegaron durante el hueco: prueba de que el modelo recibía audio. */
+  inputDeltas: number;
+  inputText: string;
+  /** Lo primero que dijo el modelo al reanudar. */
+  outputAfter: string;
+  statusEvents: string[];
+  verdict: 'el modelo recibía audio y retuvo la salida' | 'no llegó transcripción de entrada: revisar red o envío' | 'evento de sesión en el hueco' | 'sin transcripción de entrada activada';
+}
+
 export interface DiagnoseResult {
   thresholdMs: number;
   connectMs: number | null;
+  rttMs: Stat | null;
+  /** Inicio de habla en la fuente tras una pausa → primer fragmento de transcripción de entrada (proxy de subida + reconocimiento). */
+  inputTranscriptLag: Stat | null;
+  arrivalGaps: GapForensic[];
   chunks: { count: number; queueWait: Stat; shareQueued: number | null; chunkMs: number | null };
   bursts: { count: number; generationSpeed: Stat; audioPerBurstMs: Stat; singleChunkShare: number | null };
   sentences: { n: number; arrivalLag: Stat; queueLag: Stat; lagStart: Stat; lagEnd: Stat; durationRatio: Stat; excessPerMinuteMs: number | null };
@@ -53,7 +76,7 @@ function stat(v: number[]): Stat {
   return { n: s.length, medianMs: s.length ? median(s) : null, p90Ms: s.length ? percentile(s, 0.9) : null, maxMs: s.length ? s[s.length - 1] : null };
 }
 
-export function diagnoseFromData(o: { chunks: ChunkEntry[]; rate: number; items: JudgeItem[]; jumps: JudgeResult['perceived']['jumps']; raw: Int16Array | null; speechRatio: number | null; connectMs: number | null; thresholdMs: number }): DiagnoseResult {
+export function diagnoseFromData(o: { chunks: ChunkEntry[]; rate: number; items: JudgeItem[]; jumps: JudgeResult['perceived']['jumps']; raw: Int16Array | null; speechRatio: number | null; connectMs: number | null; thresholdMs: number; rttMs?: Stat | null; inputTranscriptLag?: Stat | null; arrivalGaps?: GapForensic[] }): DiagnoseResult {
   const { chunks, rate } = o;
   const dur = (c: ChunkEntry) => (c.samples / rate) * 1000;
 
@@ -155,6 +178,9 @@ export function diagnoseFromData(o: { chunks: ChunkEntry[]; rate: number; items:
   return {
     thresholdMs: o.thresholdMs,
     connectMs: o.connectMs,
+    rttMs: o.rttMs ?? null,
+    inputTranscriptLag: o.inputTranscriptLag ?? null,
+    arrivalGaps: o.arrivalGaps ?? [],
     chunks: { count: chunks.length, queueWait: stat(queueWaits), shareQueued: chunks.length ? queueWaits.filter((q) => q > 500).length / chunks.length : null, chunkMs },
     bursts: { count: bursts.length, generationSpeed: stat(speeds.map((x) => x * 1000)), audioPerBurstMs: stat(bursts.map((b) => b.audioMs)), singleChunkShare: bursts.length ? bursts.filter((b) => b.n === 1).length / bursts.length : null },
     sentences: { n: items.length, arrivalLag: arrival, queueLag: queue, lagStart, lagEnd, durationRatio: stat(ratios.map((r) => r * 1000)), excessPerMinuteMs: sourceSpanMs > 0 ? (excessMs / sourceSpanMs) * 60_000 : null },
@@ -168,7 +194,82 @@ export function diagnoseFromData(o: { chunks: ChunkEntry[]; rate: number; items:
   };
 }
 
-export function diagnoseRun(runDir: string, o: { thresholdMs?: number } = {}): DiagnoseResult {
+interface EventLine {
+  t: number;
+  type: string;
+  code?: string;
+  message?: string;
+  channel?: string;
+  text?: string;
+  final?: boolean;
+  data?: { connectMs?: number; rttMs?: number };
+}
+
+function readEvents(runDir: string): EventLine[] {
+  const path = join(runDir, 'eventos.jsonl');
+  if (!existsSync(path)) return [];
+  const out: EventLine[] = [];
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    if (!line || line.includes('"type":"audio"') || line.includes('"type":"raw"')) continue;
+    try {
+      out.push(JSON.parse(line) as EventLine);
+    } catch {
+      /* ignorar */
+    }
+  }
+  return out;
+}
+
+/**
+ * Huecos en las llegadas del modelo mientras la fuente hablaba, con la
+ * evidencia de qué pasaba en cada uno. Independiente de la reproducción.
+ */
+export function arrivalGapForensics(o: { chunks: ChunkEntry[]; rate: number; events: EventLine[]; source: Segment[]; lagMs: number; reference: Reference | null; minGapMs?: number }): GapForensic[] {
+  const minGap = o.minGapMs ?? 2500;
+  const inputDeltas = o.events.filter((e) => e.type === 'transcript' && e.channel === 'source' && !e.final);
+  const outputDeltas = o.events.filter((e) => e.type === 'transcript' && e.channel === 'target' && !e.final);
+  const statuses = o.events.filter((e) => e.type === 'status' || e.type === 'error');
+  const hasInputTranscription = inputDeltas.length > 0;
+  const out: GapForensic[] = [];
+  const sorted = [...o.chunks].sort((a, b) => a.t - b.t);
+  for (let k = 1; k < sorted.length; k++) {
+    const a = sorted[k - 1].t + (sorted[k - 1].samples / o.rate) * 1000;
+    const b = sorted[k].t;
+    if (b - a < minGap) continue;
+    const speech = overlapMs(o.source, a - o.lagMs, b - o.lagMs);
+    if (speech < 1500) continue;
+    const inWin = inputDeltas.filter((e) => e.t >= a && e.t <= b);
+    const after = outputDeltas.filter((e) => e.t >= b && e.t <= b + 4000).map((e) => e.text ?? '').join('').replace(/\s+/g, ' ').trim();
+    const st = statuses.filter((e) => e.t >= a - 2000 && e.t <= b + 2000 && e.code !== 'net.rtt').map((e) => `${(e.t / 1000).toFixed(1)}s ${e.code ?? e.type}: ${e.message ?? ''}`);
+    const refText = o.reference ? o.reference.segments.filter((s) => s.end > a - o.lagMs && s.start < b - o.lagMs).map((s) => s.text).join(' ') : null;
+    let verdict: GapForensic['verdict'];
+    if (st.length) verdict = 'evento de sesión en el hueco';
+    else if (!hasInputTranscription) verdict = 'sin transcripción de entrada activada';
+    else if (inWin.length > 0) verdict = 'el modelo recibía audio y retuvo la salida';
+    else verdict = 'no llegó transcripción de entrada: revisar red o envío';
+    out.push({ startMs: a, endMs: b, durationMs: b - a, sourceSpeechMs: speech, sourceText: refText, inputDeltas: inWin.length, inputText: inWin.map((e) => e.text ?? '').join('').replace(/\s+/g, ' ').trim().slice(0, 220), outputAfter: after.slice(0, 220), statusEvents: st, verdict });
+  }
+  return out;
+}
+
+/** Inicio de habla tras una pausa → primer fragmento de transcripción de entrada. */
+export function inputTranscriptLagStat(events: EventLine[], source: Segment[]): Stat | null {
+  const deltas = events.filter((e) => e.type === 'transcript' && e.channel === 'source' && !e.final && (e.text ?? '').trim()).map((e) => e.t).sort((a, b) => a - b);
+  if (!deltas.length) return null;
+  const starts = source.filter((s, i) => i === 0 || s.start - source[i - 1].end >= 700).map((s) => s.start);
+  const lags: number[] = [];
+  let j = 0;
+  for (const s of starts) {
+    while (j < deltas.length && deltas[j] < s) j++;
+    if (j >= deltas.length) break;
+    const lag = deltas[j] - s;
+    if (lag <= 6000) lags.push(lag);
+  }
+  return lags.length ? stat(lags) : null;
+}
+
+export async function diagnoseRun(runDir: string, o: { thresholdMs?: number; reference?: Reference | null; log?: (line: string) => void } = {}): Promise<DiagnoseResult> {
+  const log = o.log ?? (() => {});
   const thresholdMs = o.thresholdMs ?? 3000;
   const chunks = loadChunks(runDir);
   if (!chunks.length) throw new Error(`No hay fragmentos de audio en ${join(runDir, 'eventos.jsonl')}`);
@@ -179,20 +280,36 @@ export function diagnoseRun(runDir: string, o: { thresholdMs?: number } = {}): D
   const judge = existsSync(jPath) ? (JSON.parse(readFileSync(jPath, 'utf8')) as JudgeResult) : null;
   const mPath = join(runDir, 'metricas.json');
   const metrics = existsSync(mPath) ? (JSON.parse(readFileSync(mPath, 'utf8')) as Metrics) : null;
+  const events = readEvents(runDir);
   let connectMs: number | null = null;
-  for (const line of readFileSync(join(runDir, 'eventos.jsonl'), 'utf8').split('\n')) {
-    if (!line.includes('session.opened')) continue;
-    try {
-      const ev = JSON.parse(line) as { data?: { connectMs?: number } };
-      if (typeof ev.data?.connectMs === 'number') {
-        connectMs = ev.data.connectMs;
-        break;
-      }
-    } catch {
-      /* ignorar */
-    }
+  const rtts: number[] = [];
+  for (const e of events) {
+    if (e.code === 'session.opened' && typeof e.data?.connectMs === 'number' && connectMs === null) connectMs = e.data.connectMs;
+    if (e.code === 'net.rtt' && typeof e.data?.rttMs === 'number') rtts.push(e.data.rttMs);
   }
-  const result = diagnoseFromData({ chunks, rate, items: judge?.items ?? [], jumps: judge?.perceived?.jumps ?? [], raw, speechRatio: metrics?.speechRatio ?? null, connectMs, thresholdMs });
+
+  // Fuente: segmentos de habla, para situar los huecos.
+  let source: Segment[] = [];
+  let inputTranscriptLag: Stat | null = null;
+  let arrivalGaps: GapForensic[] = [];
+  const cPath = join(runDir, 'corrida.json');
+  if (existsSync(cPath)) {
+    const corrida = JSON.parse(readFileSync(cPath, 'utf8')) as { input?: string; engine?: string; maxMinutes?: number; startMs?: number };
+    if (corrida.input && existsSync(corrida.input)) {
+      try {
+        const srcRate = corrida.engine === 'openai' ? 24000 : 16000;
+        const pcm = await loadAudioAtRate(corrida.input, srcRate, { maxMs: corrida.maxMinutes ? corrida.maxMinutes * 60_000 : undefined, startMs: corrida.startMs, log });
+        source = detectSpeech(pcm, srcRate);
+        const lag = metrics?.phraseEndLag.medianMs ?? judge?.perceived?.lagStart.medianMs ?? 2000;
+        inputTranscriptLag = inputTranscriptLagStat(events, source);
+        arrivalGaps = arrivalGapForensics({ chunks, rate, events, source, lagMs: lag, reference: o.reference ?? null });
+      } catch (err) {
+        log(`No se pudo cargar la fuente para el forense de huecos: ${(err as Error).message}`);
+      }
+    } else log('corrida.json no apunta a un archivo de entrada existente; se omite el forense de huecos.');
+  }
+
+  const result = diagnoseFromData({ chunks, rate, items: judge?.items ?? [], jumps: judge?.perceived?.jumps ?? [], raw, speechRatio: metrics?.speechRatio ?? null, connectMs, thresholdMs, rttMs: rtts.length ? stat(rtts) : null, inputTranscriptLag, arrivalGaps });
   writeFileSync(join(runDir, 'diagnostico.json'), JSON.stringify(result, null, 2));
   writeFileSync(join(runDir, 'diagnostico.md'), renderDiagnose(result, Boolean(judge)));
   return result;
@@ -205,7 +322,8 @@ export function renderDiagnose(r: DiagnoseResult, hasJudge: boolean): string {
   l.push('# Diagnóstico de latencia', '');
   l.push('Descomposición del retraso a partir de los archivos de la corrida. "Llegada" es cuando el audio traducido llegó por la red; "cola" es lo que esperó en el reproductor porque todavía sonaba la frase anterior.', '');
   l.push('## De dónde viene el retraso', '');
-  l.push(`- Conexión con OpenAI (apertura del WebSocket): ${r.connectMs === null ? 'no registrado en esta corrida' : r.connectMs + ' ms'}. La ida y vuelta de red por fragmento es del orden de la mitad.`);
+  l.push(`- Conexión con OpenAI (apertura del WebSocket): ${r.connectMs === null ? 'no registrado en esta corrida' : r.connectMs + ' ms'}. Ida y vuelta de red (ping/pong): ${r.rttMs ? st(r.rttMs, 3) : 'no registrada (corridas anteriores a esta versión)'}.`);
+  l.push(`- Subida + reconocimiento (inicio de habla tras una pausa → primer fragmento de transcripción de entrada): ${r.inputTranscriptLag ? st(r.inputTranscriptLag) : 'sin datos (requiere transcripción de entrada activada)'}. Es el tiempo que tarda OpenAI en "oír" lo que se envió; lo que falte hasta la llegada del audio traducido es espera del modelo.`);
   l.push(`- Fragmentos de entrada: ${r.chunks.chunkMs === null ? '-' : Math.round(r.chunks.chunkMs) + ' ms'} por fragmento de salida; la entrada se envía cada 100 ms. Aporte de nuestro troceado: menos de 0,2 s en total.`);
   if (hasJudge && r.sentences.n) {
     l.push(`- **Modelo + red** (inicio de frase dicha → llegada del primer audio de su traducción): ${st(r.sentences.arrivalLag)}.`);
@@ -225,6 +343,25 @@ export function renderDiagnose(r: DiagnoseResult, hasJudge: boolean): string {
   l.push('- Si la **cola** es grande y la velocidad de generación es mayor que 1x, el modelo ya tenía la traducción lista y el cuello de botella es que la traducción tarda más en decirse de lo que el pastor tardó en decirla. Eso no se arregla con el modelo: se arregla acortando la escucha (hablar un poco más rápido, recortar pausas) o aceptando el retraso.');
   l.push('- Si la **llegada** ya está cerca del umbral, el retraso es del modelo (espera contexto antes de hablar) y solo se reduce cambiando de motor o de parámetros del motor.');
   l.push(`- Sin cola, el retraso al empezar a oír quedaría en mediana ${fmtSec(r.whatIf.lagStartIfNoQueueMedianMs)} y al terminar en ${fmtSec(r.whatIf.lagEndIfNoQueueMedianMs)}. El comando \`replay\` simula eso con reproducción adaptativa sin volver a llamar al modelo.`, '');
+
+  if (r.arrivalGaps.length) {
+    l.push('## Huecos en las llegadas del modelo mientras la fuente hablaba', '');
+    l.push('Medidos en las llegadas por la red, no en la reproducción: durante estos intervalos no llegó audio traducido aunque el pastor hablaba. Para cada uno se muestra la evidencia: si siguieron llegando fragmentos de transcripción de entrada (el modelo recibía audio), qué decía el pastor y qué dijo el modelo al reanudar.', '');
+    for (const g of r.arrivalGaps) {
+      l.push(`### ${fmtClock(g.startMs)} a ${fmtClock(g.endMs)}: ${fmtSec(g.durationMs, 1)} sin audio traducido; la fuente habló ${fmtSec(g.sourceSpeechMs, 1)}`, '');
+      l.push(`- Veredicto: **${g.verdict}**.`);
+      l.push(`- Transcripción de entrada recibida durante el hueco: ${g.inputDeltas} fragmentos${g.inputText ? `: "${g.inputText}"` : ''}.`);
+      if (g.sourceText) l.push(`- Lo que decía el pastor (referencia): "${g.sourceText.slice(0, 300)}"`);
+      l.push(`- Lo primero que dijo el modelo al reanudar: "${g.outputAfter || '-'}"`);
+      for (const e of g.statusEvents) l.push(`- Evento: ${e}`);
+      l.push('');
+    }
+    const counts: Record<string, number> = {};
+    for (const g of r.arrivalGaps) counts[g.verdict] = (counts[g.verdict] ?? 0) + 1;
+    l.push(`Resumen de huecos: ${Object.entries(counts).map(([k, v]) => `${k}: ${v}`).join('; ')}.`, '');
+  } else {
+    l.push('## Huecos en las llegadas del modelo', '', '- No hubo huecos de 2,5 s o más en las llegadas mientras la fuente hablaba, o no se pudo cargar la fuente (ver corrida.json).', '');
+  }
 
   if (r.jumps.length) {
     l.push('## Saltos explicados', '');

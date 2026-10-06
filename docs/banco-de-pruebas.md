@@ -171,7 +171,19 @@ Escribe `diagnostico.md` con esta descomposición, por frase oída:
 | Velocidad de generación | Audio producido por segundo de reloj en cada ráfaga | Si es mayor que 1x, el modelo ya tenía la frase lista: el cuello de botella es la escucha, no el modelo |
 
 Nuestro troceado de entrada (100 ms) y la apertura del WebSocket aportan menos
-de 0,2 s y se reportan aparte. El diagnóstico también explica cada **salto**
+de 0,2 s y se reportan aparte. Además, `diagnose` reporta la ida y vuelta de
+red medida con ping/pong cada 15 s, y "subida + reconocimiento": el tiempo
+entre que la fuente empieza a hablar tras una pausa y llega el primer
+fragmento de transcripción de entrada, que es cuando sabemos que OpenAI ya
+oyó ese audio. Lo que falte hasta la llegada del audio traducido es espera del
+modelo.
+
+Para cada **hueco de 2,5 s o más en las llegadas** mientras el pastor hablaba,
+`diagnose --reference <ref.json>` escribe la evidencia: si durante el hueco
+siguieron llegando fragmentos de transcripción de entrada (el modelo recibía
+audio y retuvo la salida), qué decía el pastor según la referencia, qué dijo
+el modelo al reanudar y si hubo algún evento de sesión. Con eso se distingue
+la política del modelo de un problema de red o de envío. El diagnóstico también explica cada **salto**
 del juez: una caída del retraso de más de 1,5 s entre dos frases, sin
 omisiones, casi siempre es la cola vaciándose en una pausa del pastor; las
 otras causas posibles son una frase oída que el juez alineó con varias del

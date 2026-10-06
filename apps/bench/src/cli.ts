@@ -50,7 +50,7 @@ run
 
 synth      --out <archivo.wav> [--seconds 60] [--rate 16000]
 prepare    --input <archivo> --out <archivo.wav> [--rate 24000] [--start-sec n] [--max-minutes n] [--normalize]
-diagnose   --run <carpeta de corrida> [--max-lag-sec 3]          (mejor después de judge)
+diagnose   --run <carpeta de corrida> [--max-lag-sec 3] [--reference <ref.json> | --manifest <m.json>]   (mejor después de judge)
 replay     --run <carpeta de corrida> [--stretch 1.15] [--trigger-sec 2.5] [--no-trim] [--out <carpeta>]
 transcribe --input <archivo> [--language es] [--out <referencia.json>]
 judge      --run <carpeta de corrida> --reference <referencia.json> [--model gpt-5] [--target en] [--max-lag-sec 3] [--no-perceived]
@@ -219,10 +219,11 @@ async function main(argv: string[]): Promise<void> {
     }
     case 'diagnose': {
       if (!values.run) throw new Error('diagnose necesita --run');
-      const r = diagnoseRun(values.run, { thresholdMs: values['max-lag-sec'] ? Number(values['max-lag-sec']) * 1000 : undefined });
+      const r = await diagnoseRun(values.run, { thresholdMs: values['max-lag-sec'] ? Number(values['max-lag-sec']) * 1000 : undefined, reference: values.reference ? loadReference(values.reference) : values.manifest ? referenceFromManifest(loadManifest(values.manifest), values.language ?? 'es') : null, log });
       const st = (x: { medianMs: number | null; p90Ms: number | null }) => `mediana ${fmtSec(x.medianMs)} p90 ${fmtSec(x.p90Ms)}`;
       console.log(`Modelo + red (inicio dicho → llegada del primer audio): ${st(r.sentences.arrivalLag)} | cola del reproductor: ${st(r.sentences.queueLag)} | al empezar a oír: ${st(r.sentences.lagStart)} | al terminar: ${st(r.sentences.lagEnd)}`);
       console.log(`Duración oída/dicha mediana ${r.sentences.durationRatio.medianMs === null ? '-' : (r.sentences.durationRatio.medianMs / 1000).toFixed(2)} | exceso ${fmtSec(r.sentences.excessPerMinuteMs, 1)} por minuto | entrega ${r.bursts.generationSpeed.medianMs === null ? 'sin ráfagas largas' : (r.bursts.generationSpeed.medianMs / 1000).toFixed(2) + 'x'} | pausas del modelo recortables ${fmtSec(r.modelPauses.totalMs, 1)} | saltos ${r.jumps.length} (${r.jumps.map((j) => j.cause).join(', ') || '-'})`);
+      console.log(`Red: ida y vuelta ${r.rttMs ? fmtSec(r.rttMs.medianMs, 3) : '-'} | subida + reconocimiento ${r.inputTranscriptLag ? st(r.inputTranscriptLag) : '-'} | huecos en llegadas con la fuente hablando: ${r.arrivalGaps.length} (${r.arrivalGaps.map((g) => `${fmtSec(g.durationMs, 1)} ${g.verdict}`).join('; ') || '-'})`);
       console.log(`Detalle en ${join(values.run, 'diagnostico.md')}`);
       return;
     }
