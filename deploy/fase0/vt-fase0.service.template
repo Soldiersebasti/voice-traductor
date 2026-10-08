@@ -1,0 +1,33 @@
+# Voice Traductor Fase 0 — unidad systemd que corre el código ORIGINAL de Google
+# exactamente como su Dockerfile: `node server.js` del build standalone, con
+# PORT y NODE_ENV=production. Solo escucha en 127.0.0.1 (Nginx hace el HTTPS).
+# Placeholders: __VT_BASE__  __VT_USER__  __VT_PORT__
+[Unit]
+Description=Voice Traductor Fase 0 - codigo original de Google (gemini-live-translate-livekit)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__VT_USER__
+Group=__VT_USER__
+WorkingDirectory=__VT_BASE__/run
+# Secretos: solo root puede leer el archivo; systemd los entrega al proceso.
+EnvironmentFile=__VT_BASE__/env/fase0.env
+Environment=NODE_ENV=production
+Environment=PORT=__VT_PORT__
+Environment=HOSTNAME=127.0.0.1
+Environment=TZ=UTC
+ExecStart=__VT_BASE__/node/bin/node server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vt-fase0
+
+[Install]
+WantedBy=multi-user.target

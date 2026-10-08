@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Fotografía actual de Voice Traductor
 
-Última actualización: **2026-10-08 15:40 UTC** · Actualizado por: sesión de Claude Code (Fase 0: despliegue de prueba en VPS, opción A) · Se lee en menos de cinco minutos.
+Última actualización: **2026-10-08 16:30 UTC** · Actualizado por: sesión de Claude Code (Fase 0: guion para el VPS compartido con Nginx) · Se lee en menos de cinco minutos.
 
 ---
 
@@ -10,9 +10,9 @@
 2. **Arquitectura aprobada.** Base = repositorio oficial `google-gemini/gemini-live-translate-livekit` (Next.js + LiveKit + Gemini Live Translate). Flujo: consola → cabina (navegador) → LiveKit → puente Node → Gemini → puente → LiveKit → celular. Servidor: VPS Hostinger + LiveKit Cloud (ADR-009).
 3. **Producto vs laboratorio.** PRODUCTO = repositorio privado derivado de Google (aún no creado). LABORATORIO = este repositorio (`voice-traductor`: bench, judge, diagnose). Nada de aquí es producto; el adaptador Gemini del laboratorio no es el puente del producto.
 4. **Estado real.** El laboratorio funciona (43 pruebas pasan, verificado 2026-10-08). El código de Google, en su commit `26d9a62`, **instala, construye y arranca en Linux con sus dependencias exactas, sin claves** (`evidencia/fase-0/00-instalacion-linux.md`). No se ha probado contra LiveKit ni Gemini. Ninguna fase del plan está HECHA.
-5. **Fase actual.** FASE 0 — `EN CURSO`: el propietario tiene las credenciales y eligió correr el servidor de la prueba en su VPS de Hostinger (opción A). Archivos y guion en `deploy/fase0/`. Este entorno web no puede correr el servidor (sin UDP ni entrada).
+5. **Fase actual.** FASE 0 — `EN CURSO`: el servidor de la prueba corre en el VPS de Hostinger del propietario, que ya aloja Guardian con Nginx en 80/443 (sin Docker ni Node). Guion aislado y temporal, con diagnóstico solo lectura, instalación, prueba, evidencia y desinstalación completa: `deploy/fase0/instalacion-vps-nginx.md` (38 pasos). Este entorno web no puede correr el servidor (sin UDP ni entrada).
 6. **Decisión principal vigente.** Usar primero el mecanismo oficial de Google para sesiones largas (`goAway` → último handle → `sessionResumption` → `contextWindowCompression`). No construir lógica propia de relevos hasta que una prueba de más de 20 minutos con dos renovaciones demuestre pérdida, duplicación o fallo real (ADR-005).
-7. **Próximo paso exacto.** El propietario ejecuta `deploy/fase0/README.md` pasos 0–11 en su VPS: Ubuntu 24.04 + Docker + Node, clon de Google en el commit `26d9a620a85410ad8c902106d3a4d3a4edfd2968` sin modificar, `.env` escrito en el VPS, `docker compose up -d --build` con Caddy (HTTPS), captura de consola con `fase0-logs.sh`, prueba corta y prueba continua de 20–25 min con un teléfono real, análisis, revisión de secretos, commit y push de `evidencia/fase-0`. Detalle en §6.
+7. **Próximo paso exacto.** El propietario ejecuta la **Parte A** (pasos 0–9, solo lectura y respaldo) de `deploy/fase0/instalacion-vps-nginx.md` en su VPS y envía las salidas; tras la confirmación, Parte B (instalación aislada: usuario `vtfase0`, `/opt/vt-fase0`, Node 22.22.0 autocontenido, clon de Google en el commit `26d9a620a85410ad8c902106d3a4d3a4edfd2968`, build idéntico al Dockerfile, unidad `systemd` en `127.0.0.1:3020`, vhost `fase0.<dominio>` con certificado por webroot), Parte C (prueba de 20–25 min con un teléfono real), Parte D (análisis, revisión de secretos, push de la evidencia). Detalle en §6.
 8. **Meta de latencia.** Mantener ≈ 2 s de promedio. Única línea base registrada de Gemini: mediana fin→fin 2,88 s (PS4, RESULTADO HISTÓRICO REPORTADO, con sesgo de arranque). Se re-mide en Fase 2.
 9. **Fuente de verdad.** Estos cinco documentos (`PROJECT_CONTRACT.md`, este archivo, `BITACORA.md`, `DECISIONS.md`, `INFRAESTRUCTURA.md`) hasta que exista el repositorio del producto; entonces migran allí (contrato §T, ADR-015).
 10. **Archivos que debes leer, en orden.** `PROJECT_CONTRACT.md` → este archivo → últimas entradas de `BITACORA.md` → `DECISIONS.md` (si tocas arquitectura) → `INFRAESTRUCTURA.md` (si tocas servidores o claves).
@@ -31,7 +31,7 @@
 | Branch | `claude/happy-lovelace-7x2zam` |
 | Commit base de esta actualización | `af16dfd` (documentación inicial) sobre `0584372` (último cambio de código, 2026-10-06) |
 | Repositorio PRODUCTO | **No creado** (ADR-011 define cómo se creará; ADR-015 cómo migra la documentación) |
-| Fase actual | **FASE 0 — EN CURSO** (servidor de la prueba: VPS de Hostinger, opción A; prueba real pendiente del lado del propietario) |
+| Fase actual | **FASE 0 — EN CURSO** (servidor de la prueba: VPS de Hostinger compartido con Guardian, instalación aislada con Nginx; prueba real pendiente del lado del propietario) |
 | Último hito completado | Fase 0, preparación: el código original de Google (commit `26d9a62`) instala, construye y arranca en Linux con dependencias exactas; herramientas de captura y análisis de consola listas y probadas con logs sintéticos; protocolo para el PC escrito (2026-10-08 13:45 UTC) |
 | Infraestructura elegida | VPS Hostinger KVM 2 (Boston, RECOMENDADA PARA PRUEBA) + LiveKit Cloud; detalle y evidencia en `INFRAESTRUCTURA.md` §1–§6 |
 | Bloqueos | Fase 0: el propietario ya tiene las credenciales (no están aún como secretos del entorno). **Este entorno web no puede correr la prueba**: sin UDP ni TCP directo el puente WebRTC no entra a LiveKit, y el teléfono no puede alcanzar el contenedor (verificado 2026-10-08 15:05, bitácora). El servidor de la prueba debe correr en el PC del propietario o en un VPS con el código de Google sin modificar. Artefactos de las corridas PS4 no compartidos. |
@@ -77,16 +77,13 @@
 
 ## 6. Siguiente tarea exacta
 
-**Fase 0 — prueba real del código de Google sin cambios, con el servidor en el VPS de Hostinger (opción A).** Guion completo con comandos en `deploy/fase0/README.md`; criterios y observación humana en `evidencia/fase-0/README.md` y `observacion-oyente.md`. Resumen:
+**Fase 0 — prueba real del código de Google sin cambios, con el servidor en el VPS de Hostinger que ya aloja Guardian.** Guion literal (Ejecuta / Resultado esperado / Si sale otra cosa) en `deploy/fase0/instalacion-vps-nginx.md`; criterios, vocabulario del resultado y plantilla de observación en `evidencia/fase-0/`. Restricciones del propietario respetadas: sin Caddy, sin Docker, sin reemplazar Nginx, sin tocar sitios, servicios, puertos, carpetas ni datos de Guardian; todo aislado y desinstalable.
 
-1. VPS KVM 2 Ubuntu 24.04 en Boston con clave SSH; subdominio `fase0.<dominio>` con registro A a su IP; firewall del panel y `ufw` con TCP 22, 80 y 443.
-2. Docker (script oficial) y Node 22 (NodeSource) en el VPS.
-3. `git clone` del repositorio de Google en `/srv/fase0/app` y `git checkout 26d9a620a85410ad8c902106d3a4d3a4edfd2968`; `git status` limpio; no editar nada.
-4. Copiar `docker-compose.yml`, `Caddyfile`, `fase0-logs.sh` y `.env.example` desde el clon del laboratorio (`/srv/lab`, rama `claude/happy-lovelace-7x2zam`); escribir `/srv/fase0/.env` con `nano` (permisos 600; nunca en el chat).
-5. `docker compose up -d --build`; comprobar `https://fase0.<dominio>/api/auth/status` → `{"passwordRequired":true}`; guardar `entorno-vps.txt`.
-6. `nohup ./fase0-logs.sh &` antes de crear la sesión; `tail -f evidencia/consola-dev.txt`.
-7. Desde el PC: sesión `prueba` solo con English; cabina con tab audio de un sermón de ≥ 25 min; prueba corta; luego 20–25 min con una persona en un teléfono real (`/session/prueba/watch`), fila cada 5 min en `observacion-oyente.md`, sin cerrar la página del oyente; lo que pase hacia el minuto 15 se registra, no se corrige.
-8. `pkill -f fase0-logs.sh`; en `/srv/lab`: `npm ci`, copiar la consola y el entorno a `evidencia/fase-0/`, `npm run fase0:analizar`, llenar la observación, `git add evidencia/fase-0`, `npm run secretos` limpio, commit y push; avisar. `docker compose down` al terminar.
+1. **Parte A (solo lectura + respaldo), pasos 0–9:** identidad, puertos en uso y puerto libre `3020`, servicios y herramientas presentes, Nginx (`nginx -t`, vhosts), cómo se administran los certificados (certbot, temporizador), firewall y salida (HTTPS a Gemini, UDP), DNS de `fase0.<dominio>`, línea base HTTP de los tres sitios de Guardian y respaldo `.tgz` + huellas SHA-256 de `/etc/nginx`. **El propietario envía las salidas y espera confirmación.**
+2. **Parte B (instalación aislada), pasos 10–23:** usuario `vtfase0` y `/opt/vt-fase0`; Node 22.22.0 autocontenido con SHA-256 verificada; clon de Google en el commit exacto; `npm ci` + `npm run build`; carpeta `run/` armada como el Dockerfile; secretos solo en `/opt/vt-fase0/env/fase0.env` (root, 600) vía `nano`; unidad `systemd` `vt-fase0` en `127.0.0.1:3020`; vhost provisional HTTP → certificado por webroot → vhost HTTPS definitivo; comprobaciones desde el VPS y el navegador; `entorno-vps.txt`.
+3. **Parte C (prueba), pasos 24–28:** captura con `fase0-logs-journal.sh`; cabina en `https://fase0.<dominio>/session/prueba/broadcast` (tab audio o entrada de la consola); teléfono en `/session/prueba/watch`; medir desde la primera frase en inglés; fila cada 5 min; observar minutos 9–10, 15 y 19–20; terminar a los 20–25 min.
+4. **Parte D (evidencia), pasos 29–32:** `npm run fase0:analizar`, `observacion-oyente.md`, `git add`, `npm run secretos` limpio, commit y push; detener la unidad.
+5. **Parte E (desinstalación completa), pasos 33–37:** solo cuando ya no haga falta; verifica con las huellas que Nginx y Guardian quedaron iguales.
 
 ## 7. Dependencias externas necesarias
 

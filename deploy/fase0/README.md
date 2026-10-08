@@ -1,4 +1,6 @@
-# Fase 0 en el VPS de Hostinger — guion paso a paso
+# Fase 0 en el VPS de Hostinger — guion paso a paso (variante VPS limpio: Docker + Caddy)
+
+> **Dos variantes según el VPS.** Esta es la variante para un VPS **limpio** (sin Nginx ni otros servicios), con Docker y Caddy. Para el VPS **compartido con Guardian** (Nginx ya ocupa 80/443; sin Docker; aislamiento total y desinstalación completa) usa **`instalacion-vps-nginx.md`** de esta carpeta, que es el documento vigente para la prueba del 2026-10. Ambas variantes corren el mismo código original de Google en el mismo commit.
 
 Objetivo: correr el **código original de Google** (`gemini-live-translate-livekit`, commit `26d9a620a85410ad8c902106d3a4d3a4edfd2968`, sin modificaciones funcionales) en un VPS con HTTPS, para la prueba continua ES→EN de **20–25 minutos** con un oyente en un teléfono real. Criterios, vocabulario del resultado y plantilla de observación: `evidencia/fase-0/README.md` y `observacion-oyente.md`. Nada de esto adapta el producto: solo pone a correr el código original en otra máquina.
 

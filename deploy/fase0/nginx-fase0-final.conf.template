@@ -1,0 +1,56 @@
+# Voice Traductor Fase 0 — vhost definitivo de la prueba: HTTPS + proxy a la app
+# original de Google que corre en 127.0.0.1:__VT_PORT__ (unidad systemd vt-fase0).
+# Archivo exclusivo: /etc/nginx/sites-available/vt-fase0.conf. No toca otros vhosts.
+# Placeholders: __VT_DOMAIN__  __VT_PORT__
+# Nginx 1.24: "listen 443 ssl http2;" (en Nginx >= 1.25.1 se escribe "http2 on;").
+
+map $http_upgrade $vt_fase0_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    server_name __VT_DOMAIN__;
+
+    access_log /var/log/nginx/vt-fase0.access.log;
+    error_log  /var/log/nginx/vt-fase0.error.log;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /opt/vt-fase0/www;
+        default_type "text/plain";
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name __VT_DOMAIN__;
+
+    ssl_certificate     /etc/letsencrypt/live/__VT_DOMAIN__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__VT_DOMAIN__/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:vt_fase0_ssl:5m;
+
+    access_log /var/log/nginx/vt-fase0.access.log;
+    error_log  /var/log/nginx/vt-fase0.error.log;
+
+    location / {
+        proxy_pass http://127.0.0.1:__VT_PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;   # la app de Google lo usa para construir la URL del QR
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $vt_fase0_connection_upgrade;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+}

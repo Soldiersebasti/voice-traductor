@@ -1,0 +1,20 @@
+# Voice Traductor Fase 0 — vhost PROVISIONAL solo HTTP (para emitir el certificado).
+# Se reemplaza por nginx-fase0-final.conf.template después de obtener el certificado.
+# Placeholders: __VT_DOMAIN__
+server {
+    listen 80;
+    server_name __VT_DOMAIN__;
+
+    access_log /var/log/nginx/vt-fase0.access.log;
+    error_log  /var/log/nginx/vt-fase0.error.log;
+
+    # Validación de Let's Encrypt (webroot); certbot no toca la configuración de Nginx.
+    location ^~ /.well-known/acme-challenge/ {
+        root /opt/vt-fase0/www;
+        default_type "text/plain";
+    }
+
+    location / {
+        return 503;
+    }
+}

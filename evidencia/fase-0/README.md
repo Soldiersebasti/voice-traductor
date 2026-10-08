@@ -19,7 +19,7 @@ La prueba debe dejar registrado: inicio; primera traducción; cada `goAway`; cad
 
 | Opción | Dónde corre la app de Google | Guion |
 |---|---|---|
-| **A. VPS de Hostinger** (elegida el 2026-10-08) | En el VPS, con Docker y Caddy (HTTPS); la cabina es el navegador de tu PC y el oyente tu teléfono | `deploy/fase0/README.md` (pasos 0–11). Los pasos 6, 7 y el vocabulario de este archivo siguen aplicando. |
+| **A. VPS de Hostinger** (elegida el 2026-10-08) | En el VPS que ya corre Guardian con Nginx: carpeta, usuario, puerto interno, unidad `systemd` y vhost propios; sin Docker ni Caddy; desinstalación completa al final | **`deploy/fase0/instalacion-vps-nginx.md`** (pasos 0–37). Para un VPS limpio existe la variante Docker + Caddy en `deploy/fase0/README.md`. El vocabulario y la plantilla de observación de esta carpeta siguen aplicando. |
 | B. PC Windows | En tu PC con `npm.cmd run dev` y un túnel para el teléfono | Pasos 1–8 de este archivo |
 
 El entorno web de Claude Code **no** puede correr el servidor (sin UDP ni entrada desde internet; verificado el 2026-10-08).
