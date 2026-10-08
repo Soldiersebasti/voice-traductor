@@ -237,7 +237,9 @@ Meta del producto: 1–2 s excelente, 2–3 s aceptable. Ninguna cifra de esta t
 
 ### Recomendación para esta etapa
 
-**Hostinger KVM 2: 2 vCPU, 8 GB RAM, 100 GB NVMe, 8 TB/mes.** Por qué: permite construir la imagen en el propio servidor sin quedarse sin memoria; deja espacio para ≈ 150 cultos grabados antes de depender de la retención; mantiene margen de CPU para el grabador y la telemetría mientras medimos; el salto de precio desde KVM 1 es pequeño; el VPS debe estar **dedicado** a Voice Traductor (compartirlo con sitios web agrega variaciones de CPU que se oyen como cortes **[INFERENCIA TÉCNICA]**).
+**Hostinger KVM 2: 2 vCPU, 8 GB RAM, 100 GB NVMe, 8 TB/mes.** Por qué: permite construir la imagen en el propio servidor sin quedarse sin memoria; deja espacio para ≈ 150 cultos grabados antes de depender de la retención; mantiene margen de CPU para el grabador y la telemetría mientras medimos; el salto de precio desde KVM 1 es pequeño. El VPS debe ser **de uso exclusivo** para Voice Traductor, sin otros sitios web en la misma máquina (compartirlo agrega variaciones de CPU que se oyen como cortes **[INFERENCIA TÉCNICA]**).
+
+**Sobre la CPU:** Hostinger describe sus planes como "vCPU"; no encontramos en sus páginas una garantía documentada de núcleo físico dedicado ni de reserva de CPU. Por eso este documento dice solo **2 vCPU**. El rendimiento real de CPU y el `steal` (tiempo que el hipervisor le quita a la VM) son métricas del protocolo de validación de §5, no supuestos. Un tercero afirma que existe un umbral no documentado de uso de CPU (riesgo R12); se vigila midiendo.
 
 ### Estimación (no medida)
 
@@ -253,7 +255,7 @@ Ancho de banda por canal **[ESTIMACIÓN]**: hacia Gemini ≈ 1,0 Mbps (PCM 48 kH
 
 ### Protocolo para medir la capacidad real (Fase 5)
 
-1. **Montaje:** VPS KVM 2 dedicado; el publicador de prueba del laboratorio entra a la sala como cabina y reproduce un sermón real a velocidad real; N canales activos (idiomas distintos permitidos en la sesión de prueba); M oyentes simulados con `livekit-client` en Node o navegadores reales.
+1. **Montaje:** VPS KVM 2 de uso exclusivo (2 vCPU, sin garantía documentada de núcleo dedicado); el publicador de prueba del laboratorio entra a la sala como cabina y reproduce un sermón real a velocidad real; N canales activos (idiomas distintos permitidos en la sesión de prueba); M oyentes simulados con `livekit-client` en Node o navegadores reales.
 2. **Escalones:** N = 1, 2, 4, 8 canales; M = 1 y 20 oyentes (los oyentes no deberían afectar al VPS; se comprueba).
 3. **Qué se mide, cada 5 s durante 20 min por escalón:**
    - CPU del contenedor (`docker stats`) y del sistema (`top`, `vmstat`): % total y por núcleo; `steal` (señal de contención del hipervisor o del umbral de Hostinger).

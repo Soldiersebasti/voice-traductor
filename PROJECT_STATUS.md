@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Fotografía actual de Voice Traductor
 
-Última actualización: **2026-10-08 13:30 UTC** · Actualizado por: sesión de Claude Code (revisión documental final) · Se lee en menos de cinco minutos.
+Última actualización: **2026-10-08 13:50 UTC** · Actualizado por: sesión de Claude Code (Fase 0: preparación) · Se lee en menos de cinco minutos.
 
 ---
 
@@ -9,10 +9,10 @@
 1. **Qué construimos.** Voice Traductor: traducción simultánea voz a voz para iglesias. El pastor habla español; los asistentes oyen inglés en su celular con audífonos. Una sola sesión de IA por idioma, compartida por todos los oyentes. Futuro: SaaS multiiglesia.
 2. **Arquitectura aprobada.** Base = repositorio oficial `google-gemini/gemini-live-translate-livekit` (Next.js + LiveKit + Gemini Live Translate). Flujo: consola → cabina (navegador) → LiveKit → puente Node → Gemini → puente → LiveKit → celular. Servidor: VPS Hostinger + LiveKit Cloud (ADR-009).
 3. **Producto vs laboratorio.** PRODUCTO = repositorio privado derivado de Google (aún no creado). LABORATORIO = este repositorio (`voice-traductor`: bench, judge, diagnose). Nada de aquí es producto; el adaptador Gemini del laboratorio no es el puente del producto.
-4. **Estado real.** El laboratorio funciona (43 pruebas pasan, verificado 2026-10-08). El código de Google fue **leído**, no ejecutado. Ninguna fase del plan está HECHA.
-5. **Fase actual.** FASE 0 — `PENDIENTE` (no iniciada).
+4. **Estado real.** El laboratorio funciona (43 pruebas pasan, verificado 2026-10-08). El código de Google, en su commit `26d9a62`, **instala, construye y arranca en Linux con sus dependencias exactas, sin claves** (`evidencia/fase-0/00-instalacion-linux.md`). No se ha probado contra LiveKit ni Gemini. Ninguna fase del plan está HECHA.
+5. **Fase actual.** FASE 0 — `BLOQUEADO`: la preparación está hecha; la prueba real (claves, PC Windows, teléfono, persona) corre del lado del propietario siguiendo `evidencia/fase-0/README.md`.
 6. **Decisión principal vigente.** Usar primero el mecanismo oficial de Google para sesiones largas (`goAway` → último handle → `sessionResumption` → `contextWindowCompression`). No construir lógica propia de relevos hasta que una prueba de más de 20 minutos con dos renovaciones demuestre pérdida, duplicación o fallo real (ADR-005).
-7. **Próximo paso exacto.** Fase 0: el propietario crea la cuenta de LiveKit Cloud y una clave de Gemini de pago (en `.env.local`, nunca en el chat); se clona el repositorio de Google sin cambios en su PC Windows; `npm.cmd install`, `npm.cmd run dev`; prueba corta ES→EN con un sermón grabado y un oyente; registrar al menos un `goAway`. Detalle en §5.
+7. **Próximo paso exacto.** El propietario ejecuta `evidencia/fase-0/README.md` pasos 1–8 en su PC: clon de Google en el commit `26d9a620a85410ad8c902106d3a4d3a4edfd2968`, `npm.cmd ci`, `.env.local` con LiveKit Cloud y Gemini de pago (nunca en el chat), `tools\fase0-run.ps1`, prueba corta ES→EN, prueba ≥ 12 min con un teléfono real y `observacion-oyente.md`, `npm.cmd run fase0:analizar`, commit de `evidencia/fase-0`. Detalle en §6.
 8. **Meta de latencia.** Mantener ≈ 2 s de promedio. Única línea base registrada de Gemini: mediana fin→fin 2,88 s (PS4, RESULTADO HISTÓRICO REPORTADO, con sesgo de arranque). Se re-mide en Fase 2.
 9. **Fuente de verdad.** Estos cinco documentos (`PROJECT_CONTRACT.md`, este archivo, `BITACORA.md`, `DECISIONS.md`, `INFRAESTRUCTURA.md`) hasta que exista el repositorio del producto; entonces migran allí (contrato §T, ADR-015).
 10. **Archivos que debes leer, en orden.** `PROJECT_CONTRACT.md` → este archivo → últimas entradas de `BITACORA.md` → `DECISIONS.md` (si tocas arquitectura) → `INFRAESTRUCTURA.md` (si tocas servidores o claves).
@@ -30,10 +30,10 @@
 | Branch | `claude/happy-lovelace-7x2zam` |
 | Commit base de esta actualización | `af16dfd` (documentación inicial) sobre `0584372` (último cambio de código, 2026-10-06) |
 | Repositorio PRODUCTO | **No creado** (ADR-011 define cómo se creará; ADR-015 cómo migra la documentación) |
-| Fase actual | **FASE 0 — PENDIENTE** |
-| Último hito completado | Revisión documental final aprobada en estructura por el propietario; decisión de infraestructura cerrada con evidencia clasificada (ADR-009) |
+| Fase actual | **FASE 0 — BLOQUEADO** (preparación hecha; prueba real pendiente del lado del propietario) |
+| Último hito completado | Fase 0, preparación: el código original de Google (commit `26d9a62`) instala, construye y arranca en Linux con dependencias exactas; herramientas de captura y análisis de consola listas y probadas con logs sintéticos; protocolo para el PC escrito (2026-10-08 13:45 UTC) |
 | Infraestructura elegida | VPS Hostinger KVM 2 (Boston, RECOMENDADA PARA PRUEBA) + LiveKit Cloud; detalle y evidencia en `INFRAESTRUCTURA.md` §1–§6 |
-| Bloqueos | Cuentas externas (LiveKit Cloud, Gemini de pago) aún no creadas. Artefactos de las corridas PS4 no compartidos. |
+| Bloqueos | Fase 0: cuentas externas (LiveKit Cloud, Gemini de pago) no creadas; la prueba real necesita el PC Windows del propietario, un teléfono y una persona; este entorno no tiene claves ni audio. Artefactos de las corridas PS4 no compartidos. |
 
 ## 2. Producto y laboratorio
 
@@ -76,20 +76,16 @@
 
 ## 6. Siguiente tarea exacta
 
-**Fase 0 — correr el código de Google sin cambios.** Pasos en orden:
+**Fase 0 — prueba real del código de Google sin cambios, en el PC del propietario.** El protocolo completo, con comandos CMD, está en `evidencia/fase-0/README.md`. Resumen:
 
-1. Propietario: crear proyecto en **LiveKit Cloud** (plan Build, gratuito). No hay región de sesión que elegir; la región de datos queda en EE. UU. por defecto. Anotar `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`. Guía en `INFRAESTRUCTURA.md` §8.
-2. Propietario: crear **clave de Gemini** en Google AI Studio desde un proyecto **con facturación**. Guía en `INFRAESTRUCTURA.md` §8.
-3. En el PC (CMD): `git clone https://github.com/google-gemini/gemini-live-translate-livekit` en una carpeta fuera de `voice-traductor`. No modificar nada.
-4. Crear `.env.local` con `GEMINI_API_KEY`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `BROADCAST_PASSWORD`.
-5. `npm.cmd install` y `npm.cmd run dev`. Abrir `http://localhost:3000`. Anotar si `@livekit/rtc-node` instaló su binario sin errores.
-6. Crear sesión con identificador de evento `prueba`, idiomas permitidos: solo `en`.
-7. Página de cabina: activar "tab audio" con un sermón grabado en otra pestaña (o el micrófono). Página del oyente en otra ventana: elegir inglés. Confirmar que se oye la traducción.
-8. Mantener la prueba **≥ 12 minutos** con el oyente conectado todo el tiempo, para observar un `goAway` y la reconexión en la consola del servidor. Guardar la consola completa en `evidencia/2026-MM-DD-fase0/consola.txt`.
-9. Anotar con cronómetro el retraso percibido en 5 frases, el primer audio y cualquier corte.
-10. Registrar en `BITACORA.md` y actualizar este archivo. Criterio de aceptación en §9.
-
-Si el oyente de prueba es un celular, exponer el PC con un túnel HTTPS temporal (`INFRAESTRUCTURA.md` §13).
+1. Propietario: proyecto en **LiveKit Cloud** (plan Build) y **clave de Gemini** de un proyecto con facturación. Claves solo en `%APP%\.env.local`. Guía en `INFRAESTRUCTURA.md` §8.
+2. `git clone` del repositorio de Google fuera del laboratorio y `git checkout 26d9a620a85410ad8c902106d3a4d3a4edfd2968`. No modificar nada.
+3. `npm.cmd ci` (dependencias exactas; debe aparecer `node_modules\@livekit\rtc-ffi-bindings-win32-x64-msvc`). Registrar versiones en `evidencia\fase-0\entorno-pc.txt`.
+4. Arrancar con `powershell -NoProfile -ExecutionPolicy Bypass -File tools\fase0-run.ps1 -Dir %APP%` desde el laboratorio (fecha y redacta la consola en `evidencia\fase-0\consola-dev.txt`).
+5. Prueba corta: sesión `prueba` solo con `en`; cabina con "tab audio" de un sermón en español; oyente en otra ventana; confirmar inglés.
+6. Prueba ≥ 12 min (ideal 15–21) con una persona en un teléfono real (túnel `cloudflared` o red local), el oyente conectado todo el tiempo, y `observacion-oyente.md` llena.
+7. `npm.cmd run fase0:analizar -- evidencia\fase-0\consola-dev.txt`; revisar que no avise de secretos.
+8. `git add evidencia\fase-0`, commit, push, y avisar. Con esa evidencia se decide PASS/FAIL (criterios en §9) y se actualizan `BITACORA.md` y este archivo.
 
 ## 7. Dependencias externas necesarias
 
@@ -128,7 +124,7 @@ Estados posibles: `PENDIENTE` · `EN CURSO` · `IMPLEMENTADO / PENDIENTE DE VALI
 
 | Fase | Nombre | Estado | Evidencia |
 |---|---|---|---|
-| 0 | Código de Google sin cambios + prueba corta | `PENDIENTE` | — |
+| 0 | Código de Google sin cambios + prueba corta | `BLOQUEADO` (preparación hecha; prueba real pendiente del lado del propietario) | `evidencia/fase-0/00-instalacion-linux.md` (parcial: instala, construye y arranca en Linux sin claves) |
 | 1 | `contextWindowCompression` + telemetría de renovaciones + grabación compatible con el banco | `PENDIENTE` | — |
 | 2 | Pruebas de 25, 40, 60 y 90 min con el mecanismo oficial; decisión con evidencia | `PENDIENTE` | — |
 | 3 | Decisiones que resulten de las pruebas | `PENDIENTE` | — |
@@ -143,8 +139,9 @@ Revisión del orden: no apareció ninguna dependencia técnica que obligue a cam
 - **Objetivo.** Confirmar que la base corre tal cual en el PC del propietario con nuestras cuentas, y ver una renovación real.
 - **Tareas.** Las 10 de §6.
 - **Criterio de aceptación.** (1) Se oye la traducción ES→EN en la página del oyente. (2) Al menos un `goAway` registrado y la reconexión completada sin caída del proceso. (3) Consola guardada en `evidencia/`. (4) Primer audio y retraso percibido anotados a cronómetro en 5 frases. (5) Instalación en Windows sin errores de binarios nativos.
-- **Pruebas requeridas.** Prueba real corta (≥ 12 min). Opcional: oyente en celular por túnel.
-- **Estado.** `PENDIENTE`.
+- **Pruebas requeridas.** Prueba corta (2–3 min) y prueba continua ≥ 12 min con una persona en un teléfono real (`evidencia/fase-0/observacion-oyente.md`).
+- **Hecho hasta ahora.** Instalación con dependencias exactas, build y arranque de humo en Linux sin claves (`evidencia/fase-0/00-instalacion-linux.md`); herramientas `tools/fase0-run.ps1` y `tools/analizar-consola-fase0.ts` probadas con logs sintéticos; protocolo `evidencia/fase-0/README.md`.
+- **Estado.** `BLOQUEADO` por dependencias externas: cuentas y claves (propietario), PC Windows, teléfono y persona que escuche.
 
 ### Fase 1 — Compresión, telemetría y grabación
 
@@ -203,8 +200,9 @@ Revisión del orden: no apareció ninguna dependencia técnica que obligue a cam
 | Pruebas automáticas | `npm test` (43) y `npm run typecheck` | Pasan (2026-10-08) |
 | Documentación técnica del laboratorio | `docs/*.md`, `docs/plantilla-evaluacion.csv`, `docs/frases-interactivas.txt`, `docs/lectura-continua.txt` | Vigente |
 | Documentación de proyecto (fuente de verdad hasta la migración) | `PROJECT_CONTRACT.md`, `PROJECT_STATUS.md`, `BITACORA.md`, `DECISIONS.md`, `INFRAESTRUCTURA.md`; `CLAUDE.md` (puerta de entrada) | Revisada 2026-10-08 |
+| Herramientas de la Fase 0 | `tools/fase0-run.ps1` (captura con marca de tiempo y redacción), `tools/analizar-consola-fase0.ts` (`npm run fase0:analizar`) | Probadas con logs sintéticos (2026-10-08); pendientes de uso real |
 | Material de prueba | `samples/` y `runs/` (ignorados por git) | Vacíos en el repositorio; en el PC del propietario |
-| Evidencia commiteable | `evidencia/` | Carpeta por crear con la primera prueba de la Fase 0 |
+| Evidencia commiteable | `evidencia/fase-0/` | `README.md` (protocolo), `00-instalacion-linux.md`, `observacion-oyente.md` (plantilla); faltan `entorno-pc.txt`, `consola-dev.txt`, `analisis-consola.md` de la prueba real |
 
 ## 11. Evidencia disponible y faltante
 
@@ -215,5 +213,6 @@ Revisión del orden: no apareció ninguna dependencia técnica que obligue a cam
 | Pruebas automáticas del laboratorio | Sí, reproducible | `npm test` |
 | Lectura del repositorio de Google | Sí (hallazgos en `DECISIONS.md` y en el plan) | Clon local de la sesión; no está en el repositorio |
 | Fuentes de la decisión de infraestructura | Sí, citadas | `INFRAESTRUCTURA.md` §15 |
-| Cualquier prueba del código de Google en ejecución | **No** | — |
+| Código de Google instalado, construido y arrancado en Linux sin claves | Sí, reproducible | `evidencia/fase-0/00-instalacion-linux.md` |
+| Prueba del código de Google contra LiveKit y Gemini, con teléfono | **No** | Pendiente del propietario (`evidencia/fase-0/README.md`) |
 | Cualquier medición de LiveKit, de región o de capacidad del VPS | **No** | — |
