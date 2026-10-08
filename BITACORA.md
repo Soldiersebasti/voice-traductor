@@ -210,3 +210,16 @@ COSAS NO RESUELTAS: La prueba real de la Fase 0, del lado del propietario.
 ESTADO AL TERMINAR: FASE 0 `BLOQUEADO` (protocolo completo; esperando la ejecución del propietario).
 COMMIT FINAL: El commit que contiene esta entrada (ver `git log -1`).
 SIGUIENTE PASO EXACTO: El propietario ejecuta `evidencia/fase-0/README.md` pasos 1–8 (prueba continua de 15–25 min, objetivo 20–25), corre `npm.cmd run secretos` antes del commit de `evidencia/fase-0`, hace push y avisa. Se vuelve a ejecutar la revisión de secretos al recibir la evidencia, se decide el resultado con el vocabulario de la Fase 0 y se actualizan `BITACORA.md` y `PROJECT_STATUS.md`. No se avanza a la Fase 1 sin aprobación.
+
+### 2026-10-08 15:05 UTC — Fase 0: ¿puede el entorno web de Claude Code ejecutar la prueba real?
+FASE: 0 (sin iniciar la prueba real)
+BRANCH: `claude/happy-lovelace-7x2zam`
+COMMIT INICIAL: `d354b61`
+OBJETIVO DE LA SESIÓN: El propietario ya tiene `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` y `GEMINI_API_KEY` y usa Claude Code en la web, no CMD local. Determinar con evidencia si este contenedor puede correr la Fase 0 (LiveKit + Gemini + acceso desde el teléfono) y cómo configurar las credenciales sin pegarlas en el chat.
+QUÉ SE HIZO: Pruebas de red desde el contenedor (sin claves): HTTPS vía proxy a `generativelanguage.googleapis.com` → 200 (y el endpoint WebSocket de Live API responde 404 de Google, es decir, alcanzable); HTTPS a `cloud.livekit.io`, `cloud-api.livekit.io` y `api.trycloudflare.com` → 000 (denegados por la política de red del entorno); TCP directo sin proxy a `cloud.livekit.io` → 403 del gateway (todo el egreso pasa por la política); UDP (STUN a `stun.l.google.com:19302`) → sin respuesta en 4 s (bloqueado); sin `cloudflared` ni `ngrok`; no existe ruta de entrada hacia el contenedor. Lectura de la documentación del entorno sobre secretos y red.
+RESULTADOS: **Este entorno no puede ejecutar la Fase 0 de punta a punta.** Lo que impide la prueba: (1) sin UDP y sin TCP directo, el puente (`@livekit/rtc-node`, WebRTC) no puede unirse a la sala de LiveKit Cloud; (2) no hay forma de que el teléfono alcance un servidor dentro del contenedor (sin entrada, túneles bloqueados). Lo que sí puede hacer este entorno: hablar con Gemini por WebSocket (validar la clave y el modelo), construir y arrancar la app, preparar archivos de despliegue y analizar la evidencia. Permitir los dominios de LiveKit en la política de red serviría solo para validar las claves por HTTPS (`ListRooms`), no para el audio.
+RIESGOS DESCUBIERTOS: Ninguno nuevo del producto. Para la Fase 0, el servidor debe correr donde haya UDP de salida y HTTPS de entrada: el PC del propietario (protocolo CMD ya escrito) o un VPS (Docker + Caddy con el código de Google sin modificar).
+DECISIONES TOMADAS: Ninguna; se le presentan las dos opciones al propietario.
+ESTADO AL TERMINAR: FASE 0 `BLOQUEADO`.
+COMMIT FINAL: El commit que contiene esta entrada.
+SIGUIENTE PASO EXACTO: El propietario guarda las credenciales como secretos del entorno (nombres: `GEMINI_API_KEY`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `BROADCAST_PASSWORD`) y elige dónde correrá el servidor de la prueba (PC o VPS). Con los secretos en una sesión nueva se valida la clave de Gemini desde aquí y se preparan los archivos de despliegue si elige VPS.

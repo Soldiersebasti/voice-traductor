@@ -34,7 +34,7 @@
 | Fase actual | **FASE 0 — BLOQUEADO** (preparación hecha; prueba real pendiente del lado del propietario) |
 | Último hito completado | Fase 0, preparación: el código original de Google (commit `26d9a62`) instala, construye y arranca en Linux con dependencias exactas; herramientas de captura y análisis de consola listas y probadas con logs sintéticos; protocolo para el PC escrito (2026-10-08 13:45 UTC) |
 | Infraestructura elegida | VPS Hostinger KVM 2 (Boston, RECOMENDADA PARA PRUEBA) + LiveKit Cloud; detalle y evidencia en `INFRAESTRUCTURA.md` §1–§6 |
-| Bloqueos | Fase 0: cuentas externas (LiveKit Cloud, Gemini de pago) no creadas; la prueba real necesita el PC Windows del propietario, un teléfono y una persona; este entorno no tiene claves ni audio. Artefactos de las corridas PS4 no compartidos. |
+| Bloqueos | Fase 0: el propietario ya tiene las credenciales (no están aún como secretos del entorno). **Este entorno web no puede correr la prueba**: sin UDP ni TCP directo el puente WebRTC no entra a LiveKit, y el teléfono no puede alcanzar el contenedor (verificado 2026-10-08 15:05, bitácora). El servidor de la prueba debe correr en el PC del propietario o en un VPS con el código de Google sin modificar. Artefactos de las corridas PS4 no compartidos. |
 
 ## 2. Producto y laboratorio
 
