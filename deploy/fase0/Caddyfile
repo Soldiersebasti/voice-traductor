@@ -1,0 +1,6 @@
+# Fase 0 — HTTPS automático (Let's Encrypt) y proxy hacia la app de Google.
+# FASE0_DOMAIN viene de /srv/fase0/.env a través de docker-compose.yml.
+{$FASE0_DOMAIN} {
+	encode gzip
+	reverse_proxy app:8080
+}

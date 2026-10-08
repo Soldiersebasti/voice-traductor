@@ -1,0 +1,40 @@
+# Fase 0 — Voice Traductor
+# Corre el código ORIGINAL de Google (gemini-live-translate-livekit, commit
+# 26d9a620a85410ad8c902106d3a4d3a4edfd2968) sin modificaciones, detrás de Caddy
+# con HTTPS automático. Este archivo vive en /srv/fase0/ del VPS; el clon de
+# Google en /srv/fase0/app/. Los secretos, en /srv/fase0/.env (permisos 600).
+services:
+  app:
+    build:
+      context: ./app            # Dockerfile de Google: node:22-slim, standalone, puerto 8080
+    restart: unless-stopped
+    env_file: .env              # GEMINI_API_KEY, LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, BROADCAST_PASSWORD
+    environment:
+      - PORT=8080
+      - HOSTNAME=0.0.0.0
+    expose:
+      - "8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      - FASE0_DOMAIN=${FASE0_DOMAIN}   # solo el dominio; Caddy no recibe los secretos
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:

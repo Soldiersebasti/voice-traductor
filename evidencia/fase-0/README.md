@@ -15,6 +15,15 @@ La prueba debe dejar registrado: inicio; primera traducción; cada `goAway`; cad
 | `analisis-consola.md` | Línea de tiempo, renovaciones y criterios comprobables | `npm.cmd run fase0:analizar` (paso 8) |
 | `observacion-oyente.md` | Lo que oyó la persona en el teléfono | Quien escucha (paso 7) |
 
+## Dónde corre el servidor de la prueba
+
+| Opción | Dónde corre la app de Google | Guion |
+|---|---|---|
+| **A. VPS de Hostinger** (elegida el 2026-10-08) | En el VPS, con Docker y Caddy (HTTPS); la cabina es el navegador de tu PC y el oyente tu teléfono | `deploy/fase0/README.md` (pasos 0–11). Los pasos 6, 7 y el vocabulario de este archivo siguen aplicando. |
+| B. PC Windows | En tu PC con `npm.cmd run dev` y un túnel para el teléfono | Pasos 1–8 de este archivo |
+
+El entorno web de Claude Code **no** puede correr el servidor (sin UDP ni entrada desde internet; verificado el 2026-10-08).
+
 ## Lo que debe existir antes (lo crea el propietario; las claves nunca van al chat)
 
 1. **LiveKit Cloud**: proyecto en cloud.livekit.io (plan Build). Anotar `LIVEKIT_URL` (`wss://<proyecto>.livekit.cloud`), `LIVEKIT_API_KEY` y `LIVEKIT_API_SECRET`. No hay región que elegir; la región de datos queda en EE. UU.
