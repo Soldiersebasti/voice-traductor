@@ -37,7 +37,7 @@ Si sale otra cosa: revisa que no haya espacios en los valores y repite.
 
 # PARTE A · Diagnóstico SOLO LECTURA y respaldo (nada cambia en el VPS)
 
-Todos los comandos de esta parte solo leen. Al terminar la Parte A, **envíame las salidas** (puedes tachar nombres de usuario o rutas de Guardian si lo prefieres; no contienen claves) y espera mi confirmación antes de la Parte B.
+Todos los comandos de esta parte solo leen, con tres salvedades conocidas y aceptadas: `nginx -t` / `nginx -T` solo prueban la configuración (no la recargan; pueden crear carpetas temporales propias de Nginx si faltaran); `certbot certificates` escribe una línea en su propio registro `/var/log/letsencrypt/letsencrypt.log`; y el PASO 9 **escribe únicamente dentro de `/root/respaldos-fase0`** (el respaldo y las huellas). Ningún comando instala paquetes, modifica Nginx, reinicia servicios, toca Guardian o MySQL, cambia el firewall ni emite certificados. Al terminar la Parte A, **envíame las salidas** (puedes tachar nombres de usuario o rutas de Guardian si lo prefieres; no contienen claves) y espera mi confirmación antes de la Parte B.
 
 ## PASO 1 · Identidad del servidor
 
@@ -79,7 +79,7 @@ Ejecuta:
 systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}'
 echo "--- herramientas"; for b in node npm pm2 docker certbot acme.sh nginx mysql; do printf "%-9s %s\n" "$b" "$(command -v $b || echo 'no instalado')"; done
 echo "--- node del sistema"; command -v node >/dev/null && node --version || echo "sin node"
-echo "--- pm2"; command -v pm2 >/dev/null && pm2 list 2>/dev/null | head -20 || echo "sin pm2"
+echo "--- procesos node/pm2 de otros usuarios (solo lectura; NO ejecutar 'pm2 list' como root: arrancaría un demonio pm2 nuevo)"; ps -eo user,pid,etime,cmd | grep -E "[p]m2|[n]ode " | head -20 || echo "sin procesos node/pm2"
 echo "--- usuario vtfase0"; id "${VT_USER}" 2>/dev/null || echo "no existe (bien)"
 echo "--- carpeta"; ls -ld "${VT_BASE}" 2>/dev/null || echo "no existe (bien)"
 ```
