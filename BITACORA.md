@@ -273,3 +273,17 @@ DECISIONES TOMADAS: Ninguna arquitectónica.
 ESTADO AL TERMINAR: FASE 0 `EN CURSO` (Parte A hecha; Parte B entregada en el chat, pendiente de ejecución por el propietario).
 COMMIT FINAL: El commit que contiene esta entrada.
 SIGUIENTE PASO EXACTO: El propietario ejecuta los pasos 10–23 enviando las salidas indicadas en cada uno; se detiene ante cualquier condición de parada. No se avanza a la Fase 1 sin aprobación.
+
+### 2026-10-08 18:15 UTC — Fase 0: Parte B completada por el propietario; Parte C entregada
+FASE: 0
+BRANCH: `claude/happy-lovelace-7x2zam`
+COMMIT INICIAL: `252e8d5`
+OBJETIVO DE LA SESIÓN: Registrar que la Parte B (pasos 10–23) se completó en el VPS y entregar la Parte C (prueba funcional de 20–25 min) con costos y límites previos, pasos verificables, monitoreo, captura segura, fallas y parada. Sin agentes. Sin ejecutar nada en el VPS.
+RESULTADOS DE LA PARTE B (reportados por el propietario): `entorno-vps.txt` creado; `fase0-logs-journal.sh` descargado con SHA-256 verificada y sintaxis validada; la aplicación original de Google responde en `https://voice.nuevavidagastonia.org` con HTTPS válido; Guardian 200 / 303 / 200 en la última comprobación. Instalación aislada: usuario `vtfase0`, `/opt/vt-fase0`, Node 22.22.0 autocontenido, unidad `vt-fase0` en 127.0.0.1:3020, vhost propio, certificado por webroot.
+QUÉ SE HIZO: Lectura de las etiquetas reales de la interfaz de Google (inicio: "Enter broadcast password", "Event ID (optional…)", "Restrict attendee languages", "Create session"; cabina: "Microphone" Enable/Disable, "Browser Tab Audio" Share Tab/Stop Sharing, "Share with attendees", "End broadcast"; oyente: "Start listening", selector con "Original audio" y los idiomas, "Listening", "Transcription") para que la Parte C describa lo que se ve en pantalla. Aclaración registrada: la app de Google no tiene selector de idioma de origen; Gemini detecta el español automáticamente y el oyente elige el idioma de destino; la cabina solo restringe los idiomas permitidos.
+RESULTADOS: Parte C entregada en el chat (pasos C1–C12).
+RIESGOS DESCUBIERTOS: Costo de la prueba ≈ 1 USD de Gemini por 25 min con un idioma; LiveKit Build ≈ 75–100 minutos-participante de 5 000 (tope duro). Límite esperado: ≈ 15 min sin `contextWindowCompression` (resultado a registrar, no a corregir).
+DECISIONES TOMADAS: Ninguna.
+ESTADO AL TERMINAR: FASE 0 `EN CURSO` (instalación de prueba lista; prueba funcional pendiente).
+COMMIT FINAL: El commit que contiene esta entrada.
+SIGUIENTE PASO EXACTO: El propietario ejecuta la Parte C (prueba de 20–25 min con un oyente real), luego la Parte D (análisis, revisión de secretos, push de `evidencia/fase-0`) y avisa. No se avanza a la Fase 1 sin aprobación.
