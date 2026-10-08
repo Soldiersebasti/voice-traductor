@@ -1,5 +1,9 @@
 # Traducción en Vivo para Iglesias — MVP
 
+> **Documentación de proyecto (empezar aquí):** [`PROJECT_STATUS.md`](PROJECT_STATUS.md) (estado actual y siguiente paso; sección "START HERE FOR AI") · [`PROJECT_CONTRACT.md`](PROJECT_CONTRACT.md) (contrato técnico y reglas de trabajo) · [`DECISIONS.md`](DECISIONS.md) (decisiones arquitectónicas) · [`BITACORA.md`](BITACORA.md) (registro cronológico, append-only) · [`INFRAESTRUCTURA.md`](INFRAESTRUCTURA.md) (cuentas, VPS, claves, seguridad).
+>
+> Desde el 2026-10-08 este repositorio es el **laboratorio** de Voice Traductor (banco de pruebas, juez, diagnóstico). El producto se construye sobre [`google-gemini/gemini-live-translate-livekit`](https://github.com/google-gemini/gemini-live-translate-livekit) en un repositorio aparte (ver `DECISIONS.md` ADR-001). El texto que sigue es la visión original del MVP y sigue vigente como descripción del problema; el objetivo actual aprobado es solo **Español → Inglés** (ADR-007).
+
 ## Idea
 
 Crear un sistema de **traducción de voz en tiempo real para iglesias**, pensado para eliminar la dependencia de una persona que tenga que traducir manualmente cada servicio.
