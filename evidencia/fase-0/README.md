@@ -112,18 +112,38 @@ cd %LAB%
 npm.cmd run fase0:analizar -- evidencia\fase-0\consola-dev.txt
 ```
 
-Escribe `evidencia\fase-0\analisis-consola.md` con la línea de tiempo (conexión inicial, primera traducción, cada `goAway`, reconexión, confirmación, cierres, huecos de audio que el código original reporta, errores) y la tabla de criterios comprobables. Si avisa de un posible secreto sin redactar, **no commitear** hasta corregir la línea.
+Escribe `evidencia\fase-0\analisis-consola.md` con la línea de tiempo (conexión inicial, primera traducción, cada `goAway`, reconexión, confirmación, cierres con código, huecos de audio que el código original reporta, errores), la tabla de criterios comprobables y un **resultado sugerido** con el vocabulario de abajo. Si avisa de un posible secreto sin redactar, **no commitear** hasta corregir la línea.
 
-Luego:
+**Regla obligatoria antes de cualquier commit de evidencia: revisión de secretos.** Primero preparar los archivos y luego ejecutar la revisión; solo se commitea si dice "Sin secretos":
 
 ```cmd
 cd %LAB%
 git add evidencia\fase-0
+npm.cmd run secretos
+```
+
+La revisión recorre lo preparado para commit y toda la carpeta `evidencia\` y falla (código 2) si encuentra: `.env` o `.env.local`, claves de API (Google `AIza…`, OpenAI/DashScope `sk-…`, LiveKit `API…`), asignaciones `LIVEKIT_API_SECRET=…`, `GEMINI_API_KEY=…`, `BROADCAST_PASSWORD=…`, URLs con credenciales (`usuario:clave@` o `?key=`/`?token=`), handles completos de Gemini, tokens JWT (`eyJ….eyJ….…`) o bloques de llave privada. Si falla, corregir la línea (o quitar el archivo con `git reset evidencia\fase-0\<archivo>`) y repetir. `.env.local` vive en `%APP%`, fuera del laboratorio, y nunca se agrega a git. Nunca usar `git add -A` dentro del clon de Google.
+
+Solo con la revisión limpia:
+
+```cmd
 git commit -m "Fase 0: evidencia de la prueba con el codigo original de Google"
 git push
 ```
 
-y avisar en el chat. Con esos archivos se actualizan `BITACORA.md` y `PROJECT_STATUS.md` y se decide PASS o FAIL de la Fase 0.
+y avisar en el chat. Antes de aceptar la evidencia se vuelve a ejecutar `npm run secretos` del lado de la revisión. Con esos archivos se actualizan `BITACORA.md` y `PROJECT_STATUS.md` y se decide el resultado.
+
+## Vocabulario del resultado de la Fase 0
+
+Esta prueba evalúa el **código original de Google**, no a Voice Traductor. El resultado se escribe con uno de estos rótulos, y nunca como "Voice Traductor no funciona":
+
+| Rótulo | Cuándo |
+|---|---|
+| **FASE 0 ORIGINAL GOOGLE: PASS** | Todo el flujo funciona, ≥ 15 min, al menos una renovación, la traducción continúa, pasa del minuto 15 con audio, sin error fatal, y la persona oyó inglés sin cortes ni repeticiones relevantes |
+| **FASE 0 ORIGINAL GOOGLE: FAIL EN SESIÓN LARGA / LIMITACIÓN IDENTIFICADA** | El código original funciona correctamente ES→EN y renueva la conexión, pero se detiene o se degrada alrededor del minuto 15 por no enviar `contextWindowCompression`. Es el resultado que justifica directamente la **Fase 1**: agregar `contextWindowCompression` y volver a probar |
+| **FASE 0 ORIGINAL GOOGLE: FAIL** | El código original no completa el flujo (no traduce, el teléfono no recibe audio, error fatal, la renovación no continúa) |
+| **FASE 0: INCOMPLETA** | La prueba no llegó a 15 minutos por una causa ajena al código (se detuvo antes, se cerró el oyente, se acabó el audio); repetir |
+| **FASE 0: BLOQUEADO** | No se pudo ejecutar por cuentas, claves, equipo o persona |
 
 ## Qué registra la consola original (y qué no)
 

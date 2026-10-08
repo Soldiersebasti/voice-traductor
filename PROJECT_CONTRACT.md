@@ -346,6 +346,8 @@ Para mantener nuestra versión sincronizable con `google-gemini/gemini-live-tran
 - Claves distintas para el PC de desarrollo y para el servidor. Si una clave aparece en un chat, un registro o un commit, se rota ese mismo día.
 - Los tokens que recibe el navegador son **JWT de LiveKit de corta vida** emitidos por nuestro servidor, nunca la clave de LiveKit ni la de Gemini.
 - Huecos conocidos del código de Google que se cierran antes de la iglesia (cambio O2): identidades elegidas por el cliente, borrado de sesión y baja de traducción sin contraseña, listado público de sesiones.
+- **Revisión de secretos antes de cualquier commit de evidencia.** Se ejecuta `npm run secretos` (`tools/revisar-secretos.ts`), que revisa lo preparado para commit y toda la carpeta `evidencia/`, y solo se commitea si está limpio. Busca: `.env` / `.env.local` y llaves privadas preparados para commit; claves de API (Google, OpenAI/DashScope, LiveKit); asignaciones de secretos con valor (`LIVEKIT_API_SECRET=`, `GEMINI_API_KEY=`, `BROADCAST_PASSWORD=`, `TOKEN=`); URLs con credenciales; handles completos de reanudación de Gemini; tokens JWT. Quien revisa la evidencia la vuelve a ejecutar antes de aceptarla.
+- **El resultado de una fase nombra lo que se probó.** Una prueba sobre el código original de Google se registra como `FASE 0 ORIGINAL GOOGLE: …`; una limitación de ese código (por ejemplo, detenerse hacia el minuto 15 por no enviar `contextWindowCompression`) se registra como `FAIL EN SESIÓN LARGA / LIMITACIÓN IDENTIFICADA`, nunca como "Voice Traductor no funciona". Vocabulario completo en `PROJECT_STATUS.md`, Fase 0.
 - Detalle operativo en `INFRAESTRUCTURA.md`.
 
 ## R. Glosario

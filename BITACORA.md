@@ -192,3 +192,21 @@ COSAS NO RESUELTAS: La prueba real de la Fase 0 sigue pendiente del lado del pro
 ESTADO AL TERMINAR: FASE 0 `BLOQUEADO` (igual que antes; protocolo actualizado).
 COMMIT FINAL: El commit que contiene esta entrada (ver `git log -1`).
 SIGUIENTE PASO EXACTO: El propietario ejecuta `evidencia/fase-0/README.md` pasos 1–8 con la prueba continua de 15–25 min (objetivo 20–25), commitea `evidencia/fase-0` y avisa. No se avanza a la Fase 1 sin su aprobación.
+
+### 2026-10-08 14:45 UTC — Fase 0: regla de revisión de secretos y vocabulario del resultado
+FASE: 0 (sin iniciar la prueba real)
+BRANCH: `claude/happy-lovelace-7x2zam`
+COMMIT INICIAL: `577e28f`
+OBJETIVO DE LA SESIÓN: Agregar las dos reglas pedidas por el propietario antes de la prueba real, y nada más: (1) revisión de secretos obligatoria antes de cualquier commit de evidencia; (2) el resultado de la Fase 0 nombra lo que se probó: `FASE 0 ORIGINAL GOOGLE: FAIL EN SESIÓN LARGA / LIMITACIÓN IDENTIFICADA` si el código original funciona pero se detiene hacia el minuto 15 por no enviar `contextWindowCompression`, nunca "Voice Traductor no funciona". Sin agentes. Sin modificar el código de Google.
+QUÉ SE HIZO: (1) `tools/revisar-secretos.ts` con el script `npm run secretos`: revisa lo preparado para commit y toda `evidencia/`; falla con código 2 ante `.env`/`.env.local` o llaves privadas preparadas, claves de API de Google/OpenAI/DashScope/LiveKit, asignaciones de secretos con valor, URLs con credenciales, handles completos de Gemini, tokens JWT y bloques de llave privada; nunca imprime el secreto completo. Regla escrita en `PROJECT_CONTRACT.md` §Q, `PROJECT_STATUS.md` Fase 0, `evidencia/fase-0/README.md` paso 8 y `CLAUDE.md`. (2) Vocabulario del resultado (PASS · FAIL EN SESIÓN LARGA / LIMITACIÓN IDENTIFICADA · FAIL · INCOMPLETA · BLOQUEADO) en `evidencia/fase-0/README.md`, `PROJECT_STATUS.md` Fase 0 y `PROJECT_CONTRACT.md` §Q; el analizador imprime un "resultado sugerido" con ese vocabulario, que el propietario confirma con la observación humana.
+ARCHIVOS MODIFICADOS: Nuevo: `tools/revisar-secretos.ts`. Modificados: `package.json` (script `secretos`), `tools/analizar-consola-fase0.ts`, `evidencia/fase-0/README.md`, `PROJECT_CONTRACT.md`, `PROJECT_STATUS.md`, `CLAUDE.md`, `BITACORA.md`.
+PRUEBAS EJECUTADAS: Revisión de secretos: repositorio actual limpio (3 archivos de `evidencia/`, código 0); carpeta con secretos falsos (clave `AIza…`, clave `API…` de LiveKit, secreto de LiveKit, JWT en URL, handle completo, URL `usuario:clave@`, `.env.local`) → 10 hallazgos, código 2; archivo falso preparado para commit con `BROADCAST_PASSWORD=` → detectado como preparado y en carpeta, código 2; después se quitó del índice y se borró. Analizador: log sintético de 13 min → "INCOMPLETA"; log sintético con cierre 1011 "Deadline expired" al minuto 15 y handle rechazado (1007) → "FASE 0 ORIGINAL GOOGLE: FAIL EN SESIÓN LARGA / LIMITACIÓN IDENTIFICADA" y sección "Después del minuto 15" con ambos cierres marcados como posible límite de sesión.
+COMANDOS IMPORTANTES: `npm run secretos` · `npm run secretos -- --dir <carpeta>` · `npm run fase0:analizar -- <log>`.
+RESULTADOS: Reglas registradas y herramientas probadas. Ningún otro cambio.
+ERRORES ENCONTRADOS: Durante la prueba del revisor, dos patrones daban falsos positivos con los ejemplos de la propia documentación (`?key=`/`?token=` entre acentos graves) → corrección: excluir acentos graves y paréntesis de los valores → prueba: repositorio limpio → resultado: 0 hallazgos.
+RIESGOS DESCUBIERTOS: Ninguno nuevo.
+DECISIONES TOMADAS: Ninguna arquitectónica.
+COSAS NO RESUELTAS: La prueba real de la Fase 0, del lado del propietario.
+ESTADO AL TERMINAR: FASE 0 `BLOQUEADO` (protocolo completo; esperando la ejecución del propietario).
+COMMIT FINAL: El commit que contiene esta entrada (ver `git log -1`).
+SIGUIENTE PASO EXACTO: El propietario ejecuta `evidencia/fase-0/README.md` pasos 1–8 (prueba continua de 15–25 min, objetivo 20–25), corre `npm.cmd run secretos` antes del commit de `evidencia/fase-0`, hace push y avisa. Se vuelve a ejecutar la revisión de secretos al recibir la evidencia, se decide el resultado con el vocabulario de la Fase 0 y se actualizan `BITACORA.md` y `PROJECT_STATUS.md`. No se avanza a la Fase 1 sin aprobación.

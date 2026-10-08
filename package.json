@@ -15,6 +15,7 @@
     "bench": "tsx apps/bench/src/cli.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "fase0:analizar": "tsx tools/analizar-consola-fase0.ts",
+    "secretos": "tsx tools/revisar-secretos.ts",
     "test": "node --import tsx --test \"packages/**/src/**/*.test.ts\" \"apps/**/src/**/*.test.ts\""
   },
   "devDependencies": {

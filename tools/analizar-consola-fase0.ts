@@ -192,6 +192,24 @@ export function analyze(raw: string): { md: string; secretHits: Array<{ n: numbe
   L.push('');
   L.push('Los criterios humanos (teléfono real: se oye inglés, corte perceptible, repetición, pérdida, tocar Play, reconexión de LiveKit) están en `observacion-oyente.md`.');
   L.push('');
+  // Resultado sugerido (vocabulario de PROJECT_STATUS.md, Fase 0). Esta prueba evalúa el código ORIGINAL de Google, no a Voice Traductor.
+  const baseOk = ok['aplicación inicia'] && ok['LiveKit conecta (puente entra a la sala)'] && ok['Gemini conecta (setup complete)'] && ok['llega audio traducido (primer fragmento de Gemini)'];
+  const renewOk = renewals.length >= 1 && continuedAfterRenewal === true;
+  const passed15 = ok['la sesión de Gemini pasó del minuto 15 con audio traducido llegando'] === true;
+  const t15 = bridgeStart ? bridgeStart.t + 15 * 60_000 : null;
+  const limitLikeNear15 = t15 !== null && evs.some((e) => (e.kind === 'gemini.closed' || e.kind === 'gemini.reconnect_closed' || e.kind.startsWith('error.') || e.kind === 'bridge.stop') && e.t >= t15 - 90_000 && e.t <= t15 + 5 * 60_000);
+  let sugerido: string;
+  if (baseOk && renewOk && durationMs >= 15 * 60_000 && passed15 && !fatal) {
+    sugerido = '**PASS (comprobable desde la consola)**: falta cruzar con la observación humana del teléfono.';
+  } else if (baseOk && renewOk && !passed15 && (limitLikeNear15 || durationMs >= 15 * 60_000)) {
+    sugerido = '**FASE 0 ORIGINAL GOOGLE: FAIL EN SESIÓN LARGA / LIMITACIÓN IDENTIFICADA** — el código original funciona ES→EN y renueva la conexión, pero la sesión no pasa del minuto 15 con audio, que es el límite documentado sin `contextWindowCompression`. **Esto NO significa que Voice Traductor no funcione.** Justifica directamente la Fase 1: agregar `contextWindowCompression` y volver a probar.';
+  } else if (baseOk && durationMs < 15 * 60_000) {
+    sugerido = '**INCOMPLETA**: la prueba no alcanzó 15 minutos; repetir con 20–25 minutos.';
+  } else {
+    sugerido = '**FAIL**: el código original no completó el flujo de punta a punta (ver criterios NO CUMPLE y errores).';
+  }
+  L.push(`**Resultado sugerido por el analizador** (lo confirma el propietario con la observación humana): ${sugerido}`);
+  L.push('');
   L.push('## Arranque');
   L.push('');
   const row = (label: string, e?: Ev) => L.push(`| ${label} | ${e ? fmtClock(e.t, t0) : '—'} | ${e ? e.text.slice(0, 110) : ''} |`);
