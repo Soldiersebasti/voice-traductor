@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — Fotografía actual de Voice Traductor
 
-Última actualización: **2026-10-08 13:50 UTC** · Actualizado por: sesión de Claude Code (Fase 0: preparación) · Se lee en menos de cinco minutos.
+Última actualización: **2026-10-08 14:20 UTC** · Actualizado por: sesión de Claude Code (Fase 0: duración 15–25 min; requisito del medidor de consumo) · Se lee en menos de cinco minutos.
 
 ---
 
@@ -17,7 +17,8 @@
 9. **Fuente de verdad.** Estos cinco documentos (`PROJECT_CONTRACT.md`, este archivo, `BITACORA.md`, `DECISIONS.md`, `INFRAESTRUCTURA.md`) hasta que exista el repositorio del producto; entonces migran allí (contrato §T, ADR-015).
 10. **Archivos que debes leer, en orden.** `PROJECT_CONTRACT.md` → este archivo → últimas entradas de `BITACORA.md` → `DECISIONS.md` (si tocas arquitectura) → `INFRAESTRUCTURA.md` (si tocas servidores o claves).
 11. **Reglas de método.** No agentes ni workflows salvo petición. No pedir claves en el chat. Nada se marca HECHO sin prueba + medición + evidencia. Si algo contradice una decisión registrada: detenerse y reportar. Entorno del propietario: Windows, `npm.cmd`, CMD.
-12. **Lo que NO debes volver a hacer.** Investigar si usar Google+LiveKit (decidido). Proponer distribución propia por WebSocket (rechazada). Proponer el plugin de LiveKit Agents para Google (sin `translationConfig`). Construir lógica de transición en pausa o sesiones nuevas antes de la prueba de la Fase 2. Citar "8 canales por VPS" o una región como hechos: son estimaciones hasta la Fase 5.
+12. **Requisito registrado, no bloqueante.** El producto tendrá un MASTER de consumo (minutos LiveKit del mes frente al cupo con barra y alertas 80/90/95 %; participantes simultáneos frente al máximo; Gemini). Medición propia como fuente primaria; proveedor para reconciliar; PROVIDER LIMITS separados de CUSTOMER PLAN LIMITS. Datos crudos en Fase 1; panel en la etapa comercial (contrato §U, ADR-018).
+13. **Lo que NO debes volver a hacer.** Investigar si usar Google+LiveKit (decidido). Proponer distribución propia por WebSocket (rechazada). Proponer el plugin de LiveKit Agents para Google (sin `translationConfig`). Construir lógica de transición en pausa o sesiones nuevas antes de la prueba de la Fase 2. Citar "8 canales por VPS" o una región como hechos: son estimaciones hasta la Fase 5.
 
 ---
 
@@ -83,7 +84,7 @@
 3. `npm.cmd ci` (dependencias exactas; debe aparecer `node_modules\@livekit\rtc-ffi-bindings-win32-x64-msvc`). Registrar versiones en `evidencia\fase-0\entorno-pc.txt`.
 4. Arrancar con `powershell -NoProfile -ExecutionPolicy Bypass -File tools\fase0-run.ps1 -Dir %APP%` desde el laboratorio (fecha y redacta la consola en `evidencia\fase-0\consola-dev.txt`).
 5. Prueba corta: sesión `prueba` solo con `en`; cabina con "tab audio" de un sermón en español; oyente en otra ventana; confirmar inglés.
-6. Prueba ≥ 12 min (ideal 15–21) con una persona en un teléfono real (túnel `cloudflared` o red local), el oyente conectado todo el tiempo, y `observacion-oyente.md` llena.
+6. Prueba continua de **15–25 min (objetivo 20–25)** con una persona en un teléfono real (túnel `cloudflared` o red local), el oyente conectado todo el tiempo, audio en español sin pausas largas, y `observacion-oyente.md` llena (una fila cada 5 min). Observar y anotar lo que pase después del minuto 15 sin corregir nada.
 7. `npm.cmd run fase0:analizar -- evidencia\fase-0\consola-dev.txt`; revisar que no avise de secretos.
 8. `git add evidencia\fase-0`, commit, push, y avisar. Con esa evidencia se decide PASS/FAIL (criterios en §9) y se actualizan `BITACORA.md` y este archivo.
 
@@ -117,6 +118,7 @@
 | R11 | Bluetooth agrega 0,1–0,3 s invisibles para las estadísticas | Bajo | Prueba acústica en Fase 5; audífonos de cable. |
 | R12 | Un tercero afirma que Hostinger aplica un umbral de CPU no documentado que reduce la capacidad del VPS | Medio | No verificado. Vigilar `steal` y CPU en el protocolo de capacidad (Fase 5); alternativa O3/O5. |
 | R13 | Región Boston elegida solo por geografía; sin RTT medido | Bajo | Protocolo de región en Fase 5 (PEN-004). |
+| R14 | El plan Build de LiveKit tiene **tope duro** (5 000 min-participante al mes según LiveKit): al agotarse, las conexiones nuevas fallan y un culto podría cortarse. Un culto de 90 min con 1 oyente ≈ 270 min. | Medio ahora; alto con más oyentes | Medidor de consumo propio con alertas 80/90/95 % (ADR-018); subir a Ship antes de la iglesia si el consumo previsto se acerca al cupo. |
 
 ## 9. Tabla de fases
 
@@ -124,7 +126,7 @@ Estados posibles: `PENDIENTE` · `EN CURSO` · `IMPLEMENTADO / PENDIENTE DE VALI
 
 | Fase | Nombre | Estado | Evidencia |
 |---|---|---|---|
-| 0 | Código de Google sin cambios + prueba corta | `BLOQUEADO` (preparación hecha; prueba real pendiente del lado del propietario) | `evidencia/fase-0/00-instalacion-linux.md` (parcial: instala, construye y arranca en Linux sin claves) |
+| 0 | Código de Google sin cambios + prueba continua de 15–25 min con un oyente real | `BLOQUEADO` (preparación hecha; prueba real pendiente del lado del propietario) | `evidencia/fase-0/00-instalacion-linux.md` (parcial: instala, construye y arranca en Linux sin claves) |
 | 1 | `contextWindowCompression` + telemetría de renovaciones + grabación compatible con el banco | `PENDIENTE` | — |
 | 2 | Pruebas de 25, 40, 60 y 90 min con el mecanismo oficial; decisión con evidencia | `PENDIENTE` | — |
 | 3 | Decisiones que resulten de las pruebas | `PENDIENTE` | — |
@@ -134,19 +136,19 @@ Estados posibles: `PENDIENTE` · `EN CURSO` · `IMPLEMENTADO / PENDIENTE DE VALI
 
 Revisión del orden: no apareció ninguna dependencia técnica que obligue a cambiarlo. Dos restricciones de procedimiento: (a) en las Fases 0–2 el oyente de prueba debe permanecer conectado toda la prueba, porque el código de Google apaga el canal sin oyentes hasta que la Fase 4 lo cambie; (b) la Fase 2 necesita `OPENAI_API_KEY` en el laboratorio para `transcribe` y `judge`.
 
-### Fase 0 — Código de Google sin cambios + prueba corta
+### Fase 0 — Código de Google sin cambios + prueba continua de 15–25 min con un oyente real
 
-- **Objetivo.** Confirmar que la base corre tal cual en el PC del propietario con nuestras cuentas, y ver una renovación real.
+- **Objetivo.** Conocer el comportamiento real del código original de Google de punta a punta (ES→EN, un oyente en un teléfono real) durante 15–25 minutos: atravesar las renovaciones de Gemini y observar qué ocurre al superar el minuto 15 sin `contextWindowCompression`. Nada se adapta ni se corrige en esta fase.
 - **Tareas.** Las 10 de §6.
-- **Criterio de aceptación.** (1) Se oye la traducción ES→EN en la página del oyente. (2) Al menos un `goAway` registrado y la reconexión completada sin caída del proceso. (3) Consola guardada en `evidencia/`. (4) Primer audio y retraso percibido anotados a cronómetro en 5 frases. (5) Instalación en Windows sin errores de binarios nativos.
-- **Pruebas requeridas.** Prueba corta (2–3 min) y prueba continua ≥ 12 min con una persona en un teléfono real (`evidencia/fase-0/observacion-oyente.md`).
+- **Criterio de aceptación.** (1) La aplicación inicia; LiveKit conecta; Gemini conecta. (2) Se oye la traducción ES→EN y el teléfono recibe audio en inglés. (3) La prueba continua dura **entre 15 y 25 minutos (objetivo 20–25)**. (4) Ocurre al menos una renovación de Gemini (`goAway` + reconexión con handle) y **después de ella la traducción continúa**. (5) Queda registrado qué ocurre **después del minuto 15** (límite documentado sin `contextWindowCompression`, que el código original no envía): si aparece una limitación, se registra como resultado, **no se corrige en la Fase 0**. (6) No hay error fatal que impida continuar. (7) Consola, análisis y observación humana en `evidencia/fase-0/`. Si alguno no se cumple: `FALLÓ` o `BLOQUEADO` según corresponda; nada se arregla sin registrarlo primero.
+- **Pruebas requeridas.** Prueba corta (2–3 min) y prueba continua de 15–25 min con una persona en un teléfono real (`evidencia/fase-0/observacion-oyente.md`, con una fila cada 5 min). Registra: inicio, primera traducción, cada `goAway`, cada reanudación (solo inferible: el código original no imprime `SessionResumptionUpdate`), reconexiones, pérdida perceptible, repetición, silencio, aumento de retraso, comportamiento después del minuto 15 y duración total.
 - **Hecho hasta ahora.** Instalación con dependencias exactas, build y arranque de humo en Linux sin claves (`evidencia/fase-0/00-instalacion-linux.md`); herramientas `tools/fase0-run.ps1` y `tools/analizar-consola-fase0.ts` probadas con logs sintéticos; protocolo `evidencia/fase-0/README.md`.
 - **Estado.** `BLOQUEADO` por dependencias externas: cuentas y claves (propietario), PC Windows, teléfono y persona que escuche.
 
 ### Fase 1 — Compresión, telemetría y grabación
 
 - **Objetivo.** Que el puente pueda pasar de 15 min y que cada renovación y cada bloque de audio queden medidos en el formato del laboratorio.
-- **Tareas.** (1) Crear el repositorio privado del producto con el historial de Google y el remoto `upstream` (ADR-011) y migrar la documentación (ADR-015). (2) Enviar `contextWindowCompression: { slidingWindow: {} }` en la configuración de Gemini. (3) Registrar en `eventos.jsonl`: cada `goAway` (hora, `timeLeft`), cada `SessionResumptionUpdate` (resumable, antigüedad del handle, sin escribir el handle completo), apertura y `setupComplete` de cada conexión (duración), cierres (código, razón), tokens. (4) Grabar `pastor.wav` y `traduccion_cruda.wav` con `t0` = primer bloque del pastor. (5) Activar `inputAudioTranscription`. (6) Medir la cola de salida (ms) cada segundo. (7) Marcas de los tramos 3, 4, 6 y 7 de `INFRAESTRUCTURA.md` §3; ping del WebSocket; estadísticas WebRTC de cabina y celular cada 10 s. (8) Pruebas unitarias con un Gemini falso. (9) `DIFERENCIAS.md` inicial.
+- **Tareas.** (1) Crear el repositorio privado del producto con el historial de Google y el remoto `upstream` (ADR-011) y migrar la documentación (ADR-015). (2) Enviar `contextWindowCompression: { slidingWindow: {} }` en la configuración de Gemini. (3) Registrar en `eventos.jsonl`: cada `goAway` (hora, `timeLeft`), cada `SessionResumptionUpdate` (resumable, antigüedad del handle, sin escribir el handle completo), apertura y `setupComplete` de cada conexión (duración), cierres (código, razón), tokens (`usageMetadata`). (4) Grabar `pastor.wav` y `traduccion_cruda.wav` con `t0` = primer bloque del pastor. (5) Activar `inputAudioTranscription`. (6) Medir la cola de salida (ms) cada segundo. (7) Marcas de los tramos 3, 4, 6 y 7 de `INFRAESTRUCTURA.md` §3; ping del WebSocket; estadísticas WebRTC de cabina y celular cada 10 s. (8) **Datos crudos del medidor de consumo (ADR-018):** entrada y salida de cada participante de la sala con hora e identidad, en `eventos.jsonl`; sin panel todavía. (9) Pruebas unitarias con un Gemini falso. (10) `DIFERENCIAS.md` inicial. Dejar de imprimir el handle completo en consola (hallazgo de la Fase 0).
 - **Criterio de aceptación.** Una prueba de ≥ 16 min con compresión no muere a los 15; `judge` y `diagnose` leen la carpeta producida sin cambios; pruebas unitarias pasan.
 - **Pruebas requeridas.** Unitarias; prueba real de 16–20 min.
 - **Estado.** `PENDIENTE`.

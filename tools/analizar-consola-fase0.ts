@@ -165,7 +165,8 @@ export function analyze(raw: string): { md: string; secretHits: Array<{ n: numbe
     'LiveKit conecta (puente entra a la sala)': Boolean(first('livekit.joined')),
     'Gemini conecta (setup complete)': Boolean(first('gemini.setup_complete')),
     'llega audio traducido (primer fragmento de Gemini)': Boolean(firstRx),
-    'duración ≥ 12 min': durationMs >= 12 * 60_000,
+    'duración ≥ 15 min (objetivo 20–25)': durationMs >= 15 * 60_000,
+    'la sesión de Gemini pasó del minuto 15 con audio traducido llegando': Boolean(bridgeStart && lastRx && lastRx.t - bridgeStart.t >= 15 * 60_000),
     'al menos un goAway': renewals.length >= 1,
     'reconexión con handle presente': renewals.length ? renewals.every((r) => r.handle === 'presente') : null,
     'nueva conexión confirmada (reconnect setup complete) tras cada goAway': renewals.length ? renewals.every((r) => r.setupCompleteT !== undefined) : null,
@@ -226,10 +227,36 @@ export function analyze(raw: string): { md: string; secretHits: Array<{ n: numbe
     L.push(r.firstGapAfter ? `- Hueco de audio detectado por el código original: **${(r.firstGapAfter.ms / 1000).toFixed(1)} s** (a las ${fmtClock(r.firstGapAfter.t, t0)}). El código solo reporta huecos > 2 s; un hueco menor no aparece.` : '- Sin hueco > 2 s reportado en los 90 s posteriores al goAway (el código original no detecta huecos menores).');
     L.push('');
   }
+  // Después del minuto 15 desde la creación del canal (límite documentado sin contextWindowCompression)
+  const LIMIT_RE = /deadline|expired|limit|session|quota|exceed/i;
+  const looksLikeLimit = (e: Ev) => [1008, 1011].includes(Number(e.data?.code)) || LIMIT_RE.test(String(e.data?.reason ?? '')) || LIMIT_RE.test(e.text);
+  if (bridgeStart) {
+    const t15 = bridgeStart.t + 15 * 60_000;
+    const after = evs.filter((e) => e.t >= t15 && e.kind !== 'audio.tx');
+    L.push('## Después del minuto 15 desde la creación del canal');
+    L.push('');
+    L.push(`Minuto 15 del canal = ${fmtClock(t15, t0)} en el reloj de la consola. Google documenta ≈ 15 min como límite de una sesión solo de audio sin \`contextWindowCompression\`, que el código original no envía. Lo que aparece aquí es **resultado de la prueba**; en la Fase 0 no se corrige.`);
+    L.push('');
+    if (tEnd < t15) {
+      L.push(`La consola termina a las ${fmtClock(tEnd, t0)}, **antes** del minuto 15 del canal: no hay datos sobre el límite.`);
+    } else {
+      const rxAfter15 = all('audio.rx').filter((e) => e.t >= t15);
+      L.push(`- Audio traducido recibido después del minuto 15: ${rxAfter15.length ? `sí (último fragmento impreso #${lastRx?.data?.n} a las ${fmtClock(lastRx!.t, t0)})` : '**no se imprimió ningún fragmento**'}.`);
+      const closes15 = after.filter((e) => e.kind === 'gemini.closed' || e.kind === 'gemini.reconnect_closed');
+      const goaways15 = after.filter((e) => e.kind === 'gemini.goaway');
+      const gaps15 = after.filter((e) => e.kind === 'audio.gap');
+      const errors15 = after.filter((e) => e.kind.startsWith('error.'));
+      L.push(`- goAway después del minuto 15: ${goaways15.length}. Cierres: ${closes15.length}${closes15.length ? ' → ' + closes15.map((c) => `${fmtClock(c.t, t0)} code ${c.data?.code ?? '?'}${c.data?.reason ? ` "${c.data.reason}"` : ''}${looksLikeLimit(c) ? ' **(posible límite de sesión)**' : ''}`).join('; ') : ''}.`);
+      L.push(`- Huecos > 2 s después del minuto 15: ${gaps15.length}${gaps15.length ? ' → ' + gaps15.map((g) => `${fmtClock(g.t, t0)} (${((g.data?.ms as number) / 1000).toFixed(1)} s)`).join(', ') : ''}. Errores: ${errors15.length}.`);
+      const stop15 = after.find((e) => e.kind === 'bridge.stop');
+      if (stop15) L.push(`- El puente se detuvo a las ${fmtClock(stop15.t, t0)}.`);
+    }
+    L.push('');
+  }
   if (unexpectedCloses.length) {
     L.push('## Cierres de Gemini fuera de una renovación');
     L.push('');
-    for (const c of unexpectedCloses) L.push(`- ${fmtClock(c.t, t0)} · ${c.text.slice(0, 140)}`);
+    for (const c of unexpectedCloses) L.push(`- ${fmtClock(c.t, t0)} · ${c.text.slice(0, 140)}${looksLikeLimit(c) ? ' **(posible límite de sesión)**' : ''}`);
     L.push('');
   }
   L.push(`## Errores (${errors.length})`);

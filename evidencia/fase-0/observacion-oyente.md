@@ -28,6 +28,20 @@ Quien escucha completa esto con un teléfono real y audífonos. No hace falta na
 | 8 | ¿Bloqueó la pantalla en algún momento? ¿Siguió sonando? | | |
 | 9 | Retraso percibido, a ojo: ¿cuánto tarda el inglés en salir después de que el pastor termina una frase? (1 s / 2 s / 3 s / más) | | |
 | 10 | Calidad de la voz y de la traducción, de 1 a 5 | | |
+| 11 | ¿Notó algo distinto **después del minuto 15** de escucha? (silencio, voz que no vuelve, cambio de voz, reinicio) | | hora: |
+| 12 | ¿El retraso fue **creciendo** con el tiempo, se mantuvo igual, o subía y bajaba? | | |
+| 13 | ¿Cuántos minutos escuchó en total y por qué terminó (se decidió parar / se cortó solo)? | | |
+
+## Cada 5 minutos (una fila por marca; hora del teléfono)
+
+| Minuto | Hora | ¿Se oye inglés? | Retraso a ojo (1/2/3/más s) | Silencio, repetición, pérdida, otro |
+|---|---|---|---|---|
+| 0 (inicio) | | | | |
+| 5 | | | | |
+| 10 | | | | |
+| 15 | | | | |
+| 20 | | | | |
+| 25 | | | | |
 
 ## Anotaciones libres con hora
 

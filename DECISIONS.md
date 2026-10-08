@@ -181,6 +181,18 @@ Estados: `APROBADA` (el propietario la aprobó explícitamente) · `APROBADA CON
 - **Consecuencias:** Un certificado (o un comodín si se eligen subdominios); el QR de cada iglesia apunta al dominio de la plataforma; `INFRAESTRUCTURA.md` §6 clasifica el dominio como costo fijo de plataforma.
 - **Para revisarla:** Una iglesia exige marca propia en la URL (se podría ofrecer como extra sin cambiar la arquitectura).
 
+## ADR-018 — Medición de consumo propia como fuente primaria; límites del proveedor separados de los planes del cliente
+
+- **Fecha:** 2026-10-08
+- **Estado:** `APROBADA` (requisito del propietario; se recogen datos crudos desde la Fase 1; el panel MASTER y los planes de cliente llegan en la etapa comercial; no se implementa facturación ahora)
+- **Problema:** Voice Traductor necesita ver el consumo de LiveKit (minutos del mes frente al cupo; participantes simultáneos frente al máximo) y de Gemini, con alertas antes de que un culto se corte. LiveKit Cloud no expone en los planes Build y Ship una API de minutos consumidos (la Analytics API exige Scale y no devuelve minutos-participante), y el plan Build tiene tope duro.
+- **Alternativas:** (a) Depender del panel de LiveKit; (b) medición propia a partir de eventos de participantes y de sesiones Gemini, reconciliada con los paneles y facturas del proveedor; (c) Analytics API (no disponible en nuestro plan).
+- **Decisión:** (b). `participantConnected`/`participantDisconnected` con hora (eventos del puente + webhooks de LiveKit), redondeo al minuto como LiveKit, todos los participantes contados, acumulado por culto, iglesia y mes; para Gemini, segundos de sesión y `usageMetadata`. Modelo de datos y reglas en `PROJECT_CONTRACT.md` §U e `INFRAESTRUCTURA.md` §16. **PROVIDER LIMITS** (lo que LiveKit y Gemini permiten o cobran) y **CUSTOMER PLAN LIMITS** (lo que Voice Traductor vende a cada iglesia: oyentes simultáneos + horas o minutos al mes) se modelan y configuran por separado; un plan de cliente nunca se define como el cupo gratuito de nuestra cuenta.
+- **Por qué:** Sin medición propia no hay alerta posible en Build ni en Ship; la factura mensual del proveedor es el registro autoritativo pero llega tarde; los planes de cliente deben poder existir sobre cualquier plan de proveedor.
+- **Evidencia:** Búsquedas del 2026-10-08 en la documentación de LiveKit (cuotas, facturación, Analytics API, webhooks, RoomService) y SDK oficial de Gemini. Discrepancia registrada: cupo de Build = 5 000 min según LiveKit (oct-2026) frente a 50 horas-participante en el README de Google.
+- **Consecuencias:** Fase 1 agrega los eventos de participantes y de sesión Gemini a `eventos.jsonl` (datos crudos, sin panel). La etapa comercial agrega el almacenamiento acumulado, el MASTER con barra de progreso y alertas 80/90/95 %, y la configuración de planes de cliente. Riesgo R14 (tope duro de Build) queda vigilado por el medidor.
+- **Para revisarla:** LiveKit publica una API de uso en Build/Ship; cambio de proveedor de distribución.
+
 ---
 
 ## Decisiones rechazadas (para no volver a proponerlas sin evidencia nueva)
@@ -207,6 +219,8 @@ Estados: `APROBADA` (el propietario la aprobó explícitamente) · `APROBADA CON
 | PEN-004 | Región definitiva del VPS: Hostinger Boston es RECOMENDADA PARA PRUEBA; alternativa un VPS en Virginia (Hetzner Ashburn, AWS Lightsail) si el RTT medido no cumple | Fase 5 | `ping`/`mtr` desde el VPS a LiveKit y a Gemini durante 5 min (`INFRAESTRUCTURA.md` §4); criterio ≤ 40 ms y ≤ 60 ms sostenidos |
 | PEN-010 | Identificación de cada iglesia dentro del dominio de la plataforma: ruta o subdominio | Antes de Fase 5 | Comparar: un certificado simple vs comodín; QR; sesión fija (O7) |
 | PEN-011 | Capacidad real del KVM 2 (reemplaza la estimación de ≈ 8 canales) | Fase 5 | Protocolo de `INFRAESTRUCTURA.md` §5 |
+| PEN-012 | Cupo exacto del plan Build de LiveKit en nuestra cuenta (5 000 min según LiveKit; 3 000 según el README de Google) y si la cabina y el puente cuentan como minutos-participante | Tras la Fase 0, con el panel de LiveKit | Comparar la suma de nuestras conexiones (cabina + puente + oyente × minutos) con lo que muestra el panel |
+| PEN-013 | Definición de los planes de cliente (oyentes simultáneos + minutos u horas al mes) y su relación con los límites del proveedor | Etapa comercial | Consumo real medido en las Fases 2–6 |
 | PEN-005 | Política de retención de grabaciones (propuesto 30 días) | Antes de Fase 6 | Acuerdo con la iglesia |
 | PEN-006 | Nombre y ubicación del repositorio privado del producto | Fase 1 | — |
 | PEN-007 | Firmar el CLA de Google para aportar cambios | Cuando exista un cambio útil para todos | — |

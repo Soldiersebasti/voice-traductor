@@ -403,7 +403,31 @@ Estados: `aprobado` · `temporal` (se reemplaza en una fase conocida) · `pendie
 6. El producto conserva su propia `evidencia/` para las pruebas del producto (Fases 0–6). Cada entrada de bitácora dice en qué repositorio y carpeta está su evidencia.
 7. Regla permanente: si alguien encuentra una copia antigua en el laboratorio, no la edita; va al producto.
 
-## U. Referencias oficiales
+## U. Medición de consumo, límites del proveedor y planes del cliente (ADR-018)
+
+**Requisito del producto, registrado el 2026-10-08.** Voice Traductor tendrá un **MASTER** (panel de administración) donde se vea con claridad el consumo de infraestructura, en especial de LiveKit. No se construye en la Fase 0; se recogen los datos crudos desde la Fase 1 y el panel llega en la etapa comercial. Detalle de fuentes en `INFRAESTRUCTURA.md` §16.
+
+Dos conceptos distintos que el panel no debe confundir:
+
+| Concepto | Qué mide | Ejemplo de presentación |
+|---|---|---|
+| **A. Consumo mensual** | Minutos-participante acumulados en el mes frente al cupo del plan | `LiveKit este mes · 3 420 / 5 000 min utilizados · 1 580 min disponibles · 68 % consumido` + barra de progreso. Alertas en 80 %, 90 % y 95 %, y aviso de cuándo hace falta subir de plan. |
+| **B. Capacidad simultánea** | Participantes conectados ahora frente al máximo simultáneo del plan | `Participantes conectados ahora: 37 / 100 · Capacidad disponible: 63 conexiones` |
+
+**Origen de los datos.** LiveKit Cloud **no** ofrece en los planes Build y Ship una API para consultar los minutos consumidos del mes (su Analytics API exige el plan Scale o superior y, aun así, no devuelve minutos-participante). Por eso **Voice Traductor lleva su propia medición y esa es la fuente primaria**; los números del panel de LiveKit (y de Google AI Studio para Gemini) sirven para **reconciliar** y corregir. Regla: `participantConnected → hora de entrada; participantDisconnected → hora de salida; diferencia → minutos-participante`, redondeando cada conexión hacia arriba al minuto entero como hace LiveKit; se cuentan **todos** los participantes, incluidos la cabina y el puente traductor. Se acumula por culto, por iglesia y por mes, y de ahí salen: minutos usados, minutos restantes según el plan configurado, participantes simultáneos, pico de participantes, horas de traducción y consumo por culto. Para Gemini, la fuente primaria son los segundos de sesión y los `usageMetadata` (tokens) que la Live API devuelve por conexión.
+
+**Límites del proveedor y planes del cliente son cosas distintas y se modelan por separado:**
+
+| | PROVIDER LIMITS | CUSTOMER PLAN LIMITS |
+|---|---|---|
+| Qué es | Lo que LiveKit y Gemini nos permiten o nos cobran (cupo de minutos del plan, conexiones simultáneas, precio por minuto u hora, tope duro del plan gratuito) | Lo que Voice Traductor le vende a cada iglesia (por ejemplo, PLAN X: hasta X oyentes simultáneos + X horas o minutos de servicio al mes) |
+| Dónde se configura | Configuración de la plataforma (valores por proveedor y plan contratado, con fecha) | Configuración por iglesia |
+| Quién lo vigila | El MASTER, con alertas para el operador de la plataforma | El MASTER por iglesia y, después, la facturación |
+| Relación | La suma de los planes vendidos no puede superar los límites del proveedor sin subir de plan | Un plan de cliente nunca se define como "lo que nos da LiveKit gratis" |
+
+No se implementa facturación ahora. Lo que sí queda fijado: el modelo de datos de consumo tiene `iglesia`, `culto`, `participante`, `entrada`, `salida`, `minutos` y `proveedor`, de modo que después se pueda facturar sin rediseñar el pipeline de audio (principios 12 y 19).
+
+## V. Referencias oficiales
 
 - Repositorio base: https://github.com/google-gemini/gemini-live-translate-livekit
 - Gestión de sesiones de Live API: https://ai.google.dev/gemini-api/docs/live-session
