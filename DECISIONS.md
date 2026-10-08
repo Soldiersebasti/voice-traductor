@@ -98,17 +98,20 @@ Estados: `APROBADA` (el propietario la aprobó explícitamente) · `APROBADA CON
 - **Por qué:** "Reducir la ESCALA, no cambiar la ARQUITECTURA" (propietario, 2026-10-08).
 - **Consecuencias:** Ninguna pieza se construye "solo para la prueba".
 
-## ADR-009 — Servidor inicial: VPS Linux (Hostinger) para la aplicación + LiveKit Cloud; no Cloud Run; no LiveKit autoalojado
+## ADR-009 — Servidor inicial: VPS Linux (Hostinger KVM 2) para la aplicación + LiveKit Cloud; Cloud Run pospuesto; LiveKit autoalojado pospuesto
 
-- **Fecha:** 2026-10-08
-- **Estado:** `APROBADA CONCEPTUALMENTE` (se confirma al desplegar en Fase 5)
-- **Problema:** Google recomienda Cloud Run con `--max-instances 1`, `--no-cpu-throttling`, consultas cada 3 s para que el contenedor no se apague y estado en memoria. Nuestros cultos duran hasta 90 min y queremos grabar para medir.
-- **Alternativas:** (a) Cloud Run; (b) VPS (Hostinger KVM 2, Ubuntu 24.04) con Docker y Caddy; (c) Compute Engine; (d) VPS + LiveKit autoalojado; (e) servidor dentro de la iglesia.
-- **Decisión:** (b) para la aplicación y el puente; LiveKit en LiveKit Cloud. (c) es equivalente si se prefiere todo en Google. (a) queda para la etapa comercial con estado en Redis/BD. (d) después, si el costo lo justifica. (e) descartado (depende de la luz y el internet del templo).
-- **Por qué:** Un proceso que vive 2 h sin reinicios ajenos (Cloud Run puede reemplazar la instancia con 10 s de aviso); estado en memoria que se conserva; disco normal para ≈ 0,5 GB de grabación por culto; instancia única natural; el propietario administra hosting. Capacidad: ≈ 10 % de vCPU y 20–30 MiB por puente (README de Google) → un KVM 2 sostiene con margen ≈ 8 canales de idioma simultáneos; los oyentes no consumen recursos del VPS (los sirve LiveKit Cloud). Comparación completa en `INFRAESTRUCTURA.md` §2.
-- **Evidencia:** README de Google (recursos, Cloud Run); documentación de Hostinger (planes, centros de datos, firewall); documentación de LiveKit (autoalojado). No hay aún medición propia.
-- **Consecuencias:** Operación propia del VPS (actualizaciones, firewall, backups). Costo fijo ≈ 9–15 USD/mes. Corrección registrada: el límite de 60 min de Cloud Run aplica a peticiones web entrantes, no a la conexión saliente del puente; no es razón para descartarlo.
-- **Para revisarla:** Necesidad de varias instancias (muchas iglesias simultáneas) → Redis/BD + Cloud Run o varios VPS; UDP/latencia del VPS medidos como insuficientes; costo de LiveKit Cloud alto → autoalojar.
+- **Fecha:** 2026-10-08 (evidencia clasificada el mismo día, revisión documental final)
+- **Estado:** `APROBADA CONCEPTUALMENTE` (se confirma al desplegar y medir en Fase 5; la región y la capacidad son estimaciones hasta entonces)
+- **Problema:** Un culto es un proceso con estado de 40–90 min: un proceso Node vivo, ≈ 9 conexiones sucesivas con Gemini unidas por reanudación, conexiones WebRTC con LiveKit, grabación de ≈ 0,5 GB y estado en memoria (hasta la Fase 4). Google recomienda Cloud Run con `--max-instances 1`, `--no-cpu-throttling` y una consulta cada 3 s desde la cabina para que la instancia no se apague.
+- **Alternativas comparadas:** O1 Hostinger VPS (KVM); O2 Google Cloud Run; O3 Google Compute Engine; O4 VPS + LiveKit autoalojado; O5 otros VPS con centros en Virginia o Nueva York (no comparados en detalle; reserva); O6 servidor dentro de la iglesia (descartado). Fuentes por opción, criterios y hallazgos en `INFRAESTRUCTURA.md` §1.
+- **Decisión:** O1 para la aplicación y el puente, con Docker y Caddy; LiveKit en LiveKit Cloud. O3 es equivalente aceptable si se prefiere todo en Google. O2 queda para la etapa comercial con estado en Redis/BD. O4 cuando el costo de LiveKit Cloud supere ≈ 100 USD/mes. O6 descartado.
+- **Por qué (resumen; detalle en `INFRAESTRUCTURA.md` §1.E):** lo que más amenaza un culto es que el proveedor reemplace la instancia; Cloud Run lo documenta (SIGTERM + 10 s, también "por razones de infraestructura"); una VM no lo hace. Queremos grabar en disco local durante las Fases 1–5 y en Cloud Run el disco es memoria. El propietario ya administra hosting. Costo fijo bajo.
+- **Evidencia, clasificada:**
+  - HECHO DOCUMENTADO: Cloud Run SIGTERM + 10 s y apagado no siempre ordenado; sistema de archivos en memoria; WebSockets entrantes limitados a 60 min (fuentes F4, F5 de `INFRAESTRUCTURA.md`). Código de Google: singleton en memoria, una instancia, ≈ 10 % vCPU y 20–30 MiB por puente (F1). Compute Engine: migración en vivo < 1 s (F6). Hostinger: KVM 2 = 2 vCPU / 8 GB / 100 GB / 8 TB, Boston y Phoenix, 99,9 % anunciado sin SLA formal (F7, F8, F10). LiveKit Cloud: borde más cercano, región no elegible sin plan Scale (F15).
+  - INFERENCIA TÉCNICA: un VPS es más estable que Cloud Run para nuestro proceso con estado mientras el estado viva en memoria; la conexión saliente con Gemini no está sujeta al límite de 60 min; los oyentes no consumen recursos del VPS; la elección VPS/nube no mueve la latencia si la región es la misma.
+  - ESTIMACIÓN PENDIENTE DE VALIDACIÓN: "un KVM 2 sostiene ≈ 8 canales"; todos los RTT; Boston como región (RECOMENDADA PARA PRUEBA); costos de Cloud Run y Compute Engine; ancho de banda por canal.
+- **Consecuencias:** Operación propia del VPS (actualizaciones, firewall, copias). Costo fijo ≈ 9–15 USD/mes, compartido entre iglesias. Protocolo de medición de región (§4) y de capacidad (§5) en la Fase 5; sus resultados reemplazan las estimaciones de esta ADR. Corrección registrada: el límite de 60 min de Cloud Run aplica a WebSockets entrantes, no a la conexión saliente del puente.
+- **Para revisarla:** RTT medido desde Boston a LiveKit > 40 ms o a Gemini > 60 ms sostenidos (→ O5 en Virginia); contención de CPU medida en Hostinger (→ O3 o O5); necesidad de varias instancias (→ Redis/BD + Cloud Run o varios VPS); costo de LiveKit Cloud > ≈ 100 USD/mes (→ O4).
 
 ## ADR-010 — No usar LiveKit Agents (`@livekit/agents-plugin-google`) para el puente
 
@@ -151,6 +154,33 @@ Estados: `APROBADA` (el propietario la aprobó explícitamente) · `APROBADA CON
 - **Decisión:** La página del operador (cabina) se traduce al español (O9). La página del oyente permanece en inglés porque los oyentes hablan inglés.
 - **Para revisarla:** Otros idiomas de oyentes.
 
+## ADR-015 — Fuente de verdad documental y migración al repositorio del producto
+
+- **Fecha:** 2026-10-08
+- **Estado:** `APROBADA`
+- **Problema:** Hasta que exista el repositorio del producto, la documentación vive en el laboratorio. Al crearlo, no debe haber dos contratos ni dos `PROJECT_STATUS.md` compitiendo.
+- **Decisión:** Hasta la creación del repositorio del producto, los cinco documentos de `voice-traductor` (`PROJECT_CONTRACT.md`, `PROJECT_STATUS.md`, `BITACORA.md`, `DECISIONS.md`, `INFRAESTRUCTURA.md`) son la fuente oficial. Al crearlo (primer paso de la Fase 1), se copian al producto en un commit, el producto pasa a ser la fuente canónica, y en el laboratorio se reemplazan por un `PRODUCTO.md` de una pantalla con el puntero y el commit migrado. Una sola `BITACORA.md` y un solo `DECISIONS.md`, en el producto; las sesiones de laboratorio se registran allí con prefijo `LAB:`. El laboratorio conserva `README.md`, `docs/`, `evidencia/`, `samples/README.md` y un `CLAUDE.md` reducido. Procedimiento completo en `PROJECT_CONTRACT.md` §T.
+- **Consecuencias:** Disciplina de un solo lugar por documento. `evidencia/` existe en ambos repositorios, cada una para sus propias pruebas, y la bitácora dice dónde está cada evidencia.
+- **Para revisarla:** Que los dos repositorios se fusionen en uno (no previsto).
+
+## ADR-016 — Stack canónico del producto para esta etapa
+
+- **Fecha:** 2026-10-08
+- **Estado:** `APROBADA`
+- **Decisión:** El stack es el que trae el repositorio de Google más lo mínimo para operarlo: Next.js 16.2.6 / React 19.2.4 (frontend y API en un proceso), Node 22, `TranslationBridge` sobre `@livekit/rtc-node` y `ws`, LiveKit Cloud, Gemini Live Translate por WebSocket directo, VPS Ubuntu 24.04 con Docker y Caddy, estado en memoria (temporal), observabilidad por `eventos.jsonl`, grabaciones, estadísticas WebRTC y chequeo externo; laboratorio en `voice-traductor`. Persistencia futura (Redis o BD) **no se elige ahora**. Tabla con responsabilidad, por qué y estado de cada componente en `PROJECT_CONTRACT.md` §S.
+- **Por qué:** No introducir componentes que no hacen falta (principio 15). Todo lo que no viene de Google (Docker, Caddy, VPS) resuelve un problema concreto de operación.
+- **Consecuencias:** Cualquier componente nuevo requiere un ADR que diga qué problema resuelve.
+- **Para revisarla:** Un componente del stack deja de mantenerse, cambia de licencia o una medición muestra que otro reduce latencia o fallos.
+
+## ADR-017 — El dominio pertenece a Voice Traductor y se reutiliza entre iglesias
+
+- **Fecha:** 2026-10-08
+- **Estado:** `APROBADA`
+- **Problema:** Si cada iglesia tuviera su dominio, cada instalación cargaría con DNS, certificado y costo propios, y el QR impreso dependería de la iglesia.
+- **Decisión:** Un solo dominio de Voice Traductor para toda la plataforma. No es un costo operativo del cliente; es un costo fijo de plataforma. Cómo se identifica cada iglesia dentro del dominio (ruta `/<iglesia>/...` o subdominio `<iglesia>.<dominio>`) queda pendiente (PEN-010) y se decide antes de la Fase 5, cuando se configure el VPS.
+- **Consecuencias:** Un certificado (o un comodín si se eligen subdominios); el QR de cada iglesia apunta al dominio de la plataforma; `INFRAESTRUCTURA.md` §6 clasifica el dominio como costo fijo de plataforma.
+- **Para revisarla:** Una iglesia exige marca propia en la URL (se podría ofrecer como extra sin cambiar la arquitectura).
+
 ---
 
 ## Decisiones rechazadas (para no volver a proponerlas sin evidencia nueva)
@@ -174,7 +204,9 @@ Estados: `APROBADA` (el propietario la aprobó explícitamente) · `APROBADA CON
 | PEN-001 | ¿Tasa de muestreo hacia Gemini: 48 kHz (como Google) o 16 kHz (nativa del modelo)? | Después de Fase 2 | A/B con juez: calidad y latencia; ancho de banda |
 | PEN-002 | Umbral de recorte de la cola de salida (propuesto 3 s) | Fase 3 | Medición de cola en pruebas de 60 min |
 | PEN-003 | Meta de latencia definitiva del producto (≈ 2 s pedida; 2–3 s medida con sesgo) | Fase 3 | Nueva línea base de capa 1 sin sesgo |
-| PEN-004 | Proveedor y plan exactos del VPS (Hostinger KVM 2 propuesto) y región de LiveKit Cloud | Fase 5 | Latencia medida desde la iglesia |
+| PEN-004 | Región definitiva del VPS: Hostinger Boston es RECOMENDADA PARA PRUEBA; alternativa un VPS en Virginia (Hetzner Ashburn, AWS Lightsail) si el RTT medido no cumple | Fase 5 | `ping`/`mtr` desde el VPS a LiveKit y a Gemini durante 5 min (`INFRAESTRUCTURA.md` §4); criterio ≤ 40 ms y ≤ 60 ms sostenidos |
+| PEN-010 | Identificación de cada iglesia dentro del dominio de la plataforma: ruta o subdominio | Antes de Fase 5 | Comparar: un certificado simple vs comodín; QR; sesión fija (O7) |
+| PEN-011 | Capacidad real del KVM 2 (reemplaza la estimación de ≈ 8 canales) | Fase 5 | Protocolo de `INFRAESTRUCTURA.md` §5 |
 | PEN-005 | Política de retención de grabaciones (propuesto 30 días) | Antes de Fase 6 | Acuerdo con la iglesia |
 | PEN-006 | Nombre y ubicación del repositorio privado del producto | Fase 1 | — |
 | PEN-007 | Firmar el CLA de Google para aportar cambios | Cuando exista un cambio útil para todos | — |

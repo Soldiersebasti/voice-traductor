@@ -1,6 +1,6 @@
 # PROJECT_CONTRACT.md — Contrato de trabajo y memoria técnica oficial de Voice Traductor
 
-Versión 1.0 · 2026-10-08 · Propietario: Sebastián (soldiersebasti) · Este documento cambia poco. Si cambia, se registra en `DECISIONS.md`.
+Versión 1.1 · 2026-10-08 · Propietario: Sebastián (soldiersebasti) · Este documento cambia poco. Si cambia, se registra en `DECISIONS.md`.
 
 > **Regla de lectura.** Cualquier persona o IA que vaya a tocar este proyecto lee, en este orden: `PROJECT_CONTRACT.md` (este archivo), `PROJECT_STATUS.md`, las últimas entradas de `BITACORA.md` y, si la tarea toca arquitectura o infraestructura, `DECISIONS.md` e `INFRAESTRUCTURA.md`. Nada se implementa antes de eso.
 
@@ -66,14 +66,22 @@ PASTOR
 
 **UNA sesión de traducción Gemini por idioma. NO una sesión por oyente.** LiveKit distribuye la misma traducción a todos los oyentes de ese idioma. (ADR-003, ADR-006)
 
-### Dos repositorios, dos funciones
+### Producto y laboratorio: qué es cada cosa
 
-| Repositorio | Función | Qué contiene |
+**La etapa de demo inicial terminó.** Desde el 2026-10-08 hay exactamente dos repositorios con funciones distintas, y nada se mezcla entre ellos.
+
+| | **PRODUCTO REAL** | **LABORATORIO** |
 |---|---|---|
-| **Producto** (repositorio privado derivado del de Google; aún no creado) | Lo que corre en la iglesia | Páginas de cabina y oyente, puente LiveKit↔Gemini, ciclo del culto, telemetría, despliegue |
-| **`voice-traductor`** (este repositorio) | **Laboratorio técnico** | Banco de pruebas (`run`), juez automático (`judge`), diagnóstico (`diagnose`), simulación de reproducción (`replay`), adaptadores de motores (OpenAI, Gemini, Qwen, Hibiki, mock), pruebas controladas, comparación de motores, documentación de proyecto |
+| Repositorio | Repositorio **privado** nuevo, derivado con historial completo de `google-gemini/gemini-live-translate-livekit` (aún no creado; se crea en la Fase 1, ADR-011) | `soldiersebasti/voice-traductor` (este repositorio) |
+| Qué es | Lo que corre en la iglesia y, después, el servicio comercial | Herramientas para medir, comparar y diagnosticar |
+| Contiene | Páginas de cabina y oyente, API, puente LiveKit↔Gemini, ciclo del culto, seguridad, grabador y telemetría (`src/vt/`), despliegue (Dockerfile, compose, Caddy), `DIFERENCIAS.md` | Banco (`run`), juez (`judge`), diagnóstico (`diagnose`), simulación de reproducción (`replay`), transcripción de referencia (`transcribe`), generación de frases (`phrases`), informes (`report`), adaptadores de motores (OpenAI, Gemini, Qwen, Hibiki, mock), pruebas controladas, comparación de motores, análisis de grabaciones, documentación técnica del laboratorio, `evidencia/` |
+| Qué NO contiene | Código de benchmark ni adaptadores de otros motores | Código que sirva un culto. El adaptador Gemini del laboratorio (`packages/engines/src/engines/gemini-translate.ts`) **no** es el puente del producto y no se lleva al producto. |
+| Quién lo ejecuta | El VPS, la cabina y los celulares | El PC del propietario (y el publicador de prueba contra el producto) |
+| Formatos compartidos | Escribe `eventos.jsonl`, `pastor.wav`, `traduccion_cruda.wav`, `corrida.json` por culto (ADR-013) | Lee esos archivos con `judge` y `diagnose` sin cambios |
 
-El producto y el laboratorio comparten **formatos de medición** (`eventos.jsonl`, `traduccion_cruda.wav`, `juez.md`, `diagnostico.md`) y conocimiento, pero cumplen funciones distintas. El laboratorio mide; el producto sirve. (ADR-002, ADR-013)
+Sobre el código que ya existe en este repositorio: **todo es laboratorio**. No hay código de producto aquí, así que no hace falta mover nada a `legacy/` o `demo/`. Las propuestas anteriores de arquitectura (hub propio por WebSocket, relevos propios de Gemini) no existen como código; quedan registradas como rechazadas en `DECISIONS.md`. En el repositorio del producto, las piezas "demo" del código de Google (ciclo atado a oyentes, identidades libres, despliegue en Cloud Run) se corrigen o se reemplazan según `PROJECT_STATUS.md` Fases 4–5 y quedan anotadas en `DIFERENCIAS.md`; sus documentos originales se conservan como archivos de upstream, no como nuestra guía de despliegue.
+
+El laboratorio mide; el producto sirve. (ADR-002, ADR-013)
 
 ## E. Gemini
 
@@ -189,6 +197,10 @@ Inicialmente probamos con **un** oyente. La arquitectura debe permitir que LiveK
 | > 300 oyentes o > 20 idiomas | Salas por idioma (arquitectura de tres capas que recomienda Google) | Puente, Gemini, páginas |
 | > 10 000 oyentes | Egress a HLS + CDN | Puente, Gemini |
 | Varias iglesias simultáneas | Coordinación de instancias (Redis o base de datos) | Puente, Gemini, páginas |
+
+El **dominio** es uno solo, de Voice Traductor, y se reutiliza entre iglesias; no es un costo ni una configuración de cada cliente (ADR-017). Cómo se identifica cada iglesia dentro de ese dominio (ruta o subdominio) está pendiente (PEN-010).
+
+La **capacidad real** de un servidor (cuántos canales sostiene) no se cita como hecho hasta medirla con el protocolo de `INFRAESTRUCTURA.md` §5: CPU, RAM, red, disco con grabación simultánea, número de WebSockets, retraso del event loop y huecos de audio, por escalones de canales. Hasta entonces toda cifra de capacidad lleva la etiqueta ESTIMACIÓN PENDIENTE DE VALIDACIÓN.
 
 ## J. Reglas de cambio de arquitectura
 
@@ -356,7 +368,42 @@ Para mantener nuestra versión sincronizable con `google-gemini/gemini-live-tran
 | **Sesgo de arranque** | Defecto conocido del banco: todos los retrasos incluyen el tiempo de conexión del motor (`apps/bench/src/run.ts`, `t0` vs `tStart`) |
 | **PS1, PS4** | Grabaciones de prédicas reales usadas en las pruebas (no están en el repositorio) |
 
-## S. Referencias oficiales
+## S. Stack canónico del producto (etapa actual)
+
+Estados: `aprobado` · `temporal` (se reemplaza en una fase conocida) · `pendiente de validar` (aprobado en papel; se confirma al ejecutarse). No hay componentes que no hagan falta hoy. (ADR-016)
+
+| Componente | Tecnología | Responsabilidad | Por qué se usa | Estado |
+|---|---|---|---|---|
+| Frontend (cabina y oyente) | Next.js 16.2.6 (App Router), React 19.2.4, `@livekit/components-react`, `livekit-client` | Cabina: captura y publicación del audio, control del culto, QR. Oyente: selección de idioma, reproducción, subtítulos, pantalla encendida | Viene en el repositorio de Google; LiveKit mantiene los SDK | `aprobado` |
+| Backend (API) | Rutas API de Next.js en el mismo proceso (`/api/sessions`, `/api/token`, `/api/translate*`) | Sesiones, emisión de JWT, control de puentes | Repositorio de Google; una sola instancia | `aprobado` (con los cambios O1/O2 de la Fase 4) |
+| Runtime | Node.js 22 | Ejecuta páginas, API y puentes | `node:22-slim` del Dockerfile de Google; binarios de `rtc-node` | `aprobado` |
+| Framework | Next.js 16 con build `standalone` | Un solo servidor para páginas y API | Repositorio de Google | `aprobado` |
+| Puente de traducción | `TranslationBridge` (TypeScript) sobre `@livekit/rtc-node` y `ws` | Bot que entra a la sala, envía el audio del pastor a Gemini y publica la pista traducida y los subtítulos | Repositorio de Google; nuestras extensiones (compresión, grabación, telemetría, ciclo del culto) en `src/vt/` | `aprobado` |
+| Distribución realtime | LiveKit Cloud (SFU WebRTC, Opus, TURN) | Llevar la pista del pastor al puente y la traducción a los celulares | ADR-006 | `aprobado` (autoalojado pospuesto) |
+| Traducción IA | Gemini Live Translate `gemini-3.5-live-translate-preview`, por WebSocket directo (sin SDK) | Voz a voz ES→EN con reanudación y compresión oficiales | Único modelo voz a voz de Google; el repositorio de Google habla con la API directamente | `aprobado`; modelo en preview (riesgo R1) |
+| Servidor | VPS Hostinger KVM 2, Ubuntu 24.04, Docker + compose | Alojar el proceso único | ADR-009 | `pendiente de validar` (Fase 5) |
+| HTTPS / proxy | Caddy 2 | TLS automático y proxy a `app:8080` | Configuración mínima; renueva certificados solo | `pendiente de validar` (Fase 5) |
+| Estado actual | Memoria del proceso (`TranslationSessionManager`, singleton) | Culto activo, puentes, handle de Gemini, contadores | Repositorio de Google | `temporal` (O7 persiste la sesión fija; la etapa comercial lo mueve a Redis/BD) |
+| Persistencia futura | Redis o base de datos (**no elegida**) | Estado compartido entre instancias; cuentas; consumo | Solo hace falta con varias instancias o varias iglesias | `pendiente` (no se elige ahora) |
+| Observabilidad | `eventos.jsonl` y grabaciones por culto; estadísticas WebRTC del oyente; registros de Docker con rotación; chequeo externo de disponibilidad | Medir, diagnosticar, avisar | Formato compartido con el laboratorio (ADR-013) | `pendiente de validar` (Fase 1) |
+| Laboratorio | `voice-traductor`: TypeScript, `tsx`, `node:test`, `ws`; comandos `run`, `judge`, `diagnose`, `replay`, `transcribe`, `phrases`, `synth`, `prepare`, `report` | Medir motores y cultos grabados | ADR-002 | `aprobado` |
+| Producto | Repositorio privado derivado de Google con remoto `upstream` y `DIFERENCIAS.md` | Lo que corre en la iglesia | ADR-001, ADR-011 | `aprobado`; repositorio no creado aún |
+
+## T. Fuente de verdad documental y migración al repositorio del producto (ADR-015)
+
+**Hasta que exista el repositorio del producto, estos cinco documentos de `voice-traductor` son la fuente oficial:** `PROJECT_CONTRACT.md`, `PROJECT_STATUS.md`, `BITACORA.md`, `DECISIONS.md`, `INFRAESTRUCTURA.md`.
+
+**Cuando se cree el repositorio del producto** (primer paso de la Fase 1), la migración se hace así, en un solo commit en cada repositorio:
+
+1. En el producto: copiar los cinco documentos tal cual a la raíz, más `CLAUDE.md` adaptado. Primera entrada nueva de `BITACORA.md` en el producto: "Migración de la documentación desde `voice-traductor` commit `<hash>`". Desde ese momento el producto es la **fuente canónica**.
+2. En el laboratorio: reemplazar `PROJECT_CONTRACT.md`, `PROJECT_STATUS.md`, `DECISIONS.md` e `INFRAESTRUCTURA.md` por un archivo de una pantalla, `PRODUCTO.md`, que diga dónde vive la fuente canónica y qué commit se migró. Eliminar las copias (el historial de git las conserva). **No quedan dos contratos ni dos `PROJECT_STATUS`.**
+3. `BITACORA.md`: hay **una sola**, en el producto. Las sesiones de laboratorio posteriores se registran allí con el prefijo `LAB:` en el título y enlazan su evidencia en `voice-traductor/evidencia/`.
+4. `DECISIONS.md`: hay **uno solo**, en el producto. Las decisiones de laboratorio (motores, criterios del juez) también van allí.
+5. El laboratorio conserva lo suyo: `README.md` (con el puntero al producto), `docs/` (banco, juez, motores, rúbrica), `evidencia/` (resultados de corridas de laboratorio), `samples/README.md`, `CLAUDE.md` reducido al puntero y a los comandos del laboratorio, y `PRODUCTO.md`.
+6. El producto conserva su propia `evidencia/` para las pruebas del producto (Fases 0–6). Cada entrada de bitácora dice en qué repositorio y carpeta está su evidencia.
+7. Regla permanente: si alguien encuentra una copia antigua en el laboratorio, no la edita; va al producto.
+
+## U. Referencias oficiales
 
 - Repositorio base: https://github.com/google-gemini/gemini-live-translate-livekit
 - Gestión de sesiones de Live API: https://ai.google.dev/gemini-api/docs/live-session

@@ -1,21 +1,6 @@
-# Voice Traductor — instrucciones para sesiones de Claude Code
+# Voice Traductor — puerta de entrada para sesiones de Claude Code
 
-Este repositorio es el **laboratorio** de Voice Traductor (banco de pruebas, juez, diagnóstico). El **producto** se construye en un repositorio aparte derivado de `google-gemini/gemini-live-translate-livekit` (ver `DECISIONS.md` ADR-001 y ADR-011).
-
-Antes de tocar cualquier archivo, lee en este orden:
-
-1. `PROJECT_CONTRACT.md` — qué es el proyecto, arquitectura aprobada, principios, definición de HECHO, reglas de trabajo.
-2. `PROJECT_STATUS.md` — fotografía actual: fase, estado, siguiente paso exacto, riesgos. Empieza por "START HERE FOR AI".
-3. Últimas entradas de `BITACORA.md`.
-4. `DECISIONS.md` si la tarea toca arquitectura; `INFRAESTRUCTURA.md` si toca servidores, claves o despliegue.
-
-Reglas mínimas (detalle en el contrato):
-
-- Nada se marca HECHO sin prueba ejecutada, resultado medido y evidencia registrada en `evidencia/` y `BITACORA.md`.
-- No usar agentes, subagentes ni workflows salvo petición explícita del propietario.
-- No pedir claves en el chat. Las claves viven en `.env` (ignorado por git).
-- Si un hallazgo contradice una decisión registrada: detenerse y reportar antes de cambiar el rumbo.
-- Al terminar una sesión que cambió algo: agregar entrada a `BITACORA.md` y actualizar `PROJECT_STATUS.md`.
-- Entorno del propietario: Windows, `npm.cmd`, CMD. Comandos para CMD.
-
-Comandos del laboratorio: `npm test` (43 pruebas), `npm run typecheck`, `npm run bench -- <run|judge|diagnose|replay|transcribe|phrases|synth|prepare|report>`.
+1. **Qué leer, en orden:** `PROJECT_CONTRACT.md` → `PROJECT_STATUS.md` (empieza en "START HERE FOR AI") → últimas entradas de `BITACORA.md` → `DECISIONS.md` si la tarea toca arquitectura → `INFRAESTRUCTURA.md` si toca servidores, claves o despliegue. Antes de tocar cualquier archivo.
+2. **Fuente de verdad:** esos cinco documentos, hasta que exista el repositorio del PRODUCTO (privado, derivado de `google-gemini/gemini-live-translate-livekit`); entonces migran allí (contrato §T). Este repositorio es el **LABORATORIO** (bench, judge, diagnose), no el producto.
+3. **Fase actual:** FASE 0 — `PENDIENTE`. El siguiente paso exacto está en `PROJECT_STATUS.md` §5.
+4. **Reglas operativas fundamentales:** nada es HECHO sin prueba ejecutada, resultado medido y evidencia registrada · sin agentes, subagentes ni workflows salvo petición explícita del propietario · nunca pedir claves en el chat · ante un hallazgo que contradiga una decisión registrada, detenerse y reportar · al cerrar una sesión con cambios, agregar entrada a `BITACORA.md` y actualizar `PROJECT_STATUS.md` · entorno del propietario: Windows, `npm.cmd`, CMD.
